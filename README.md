@@ -267,4 +267,4 @@ to Financial Freedom* and *Fooled by Randomness* before funding anything.
 
 ## License
 
-MIT. Trading is risky; you are responsible for every order you approve.
+MIT — see [LICENSE](LICENSE). Trading is risky; you are responsible for every order you approve.
