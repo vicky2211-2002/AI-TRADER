@@ -1,0 +1,207 @@
+import { app, BrowserWindow, ipcMain, shell, dialog } from "electron";
+import { spawn, ChildProcess } from "node:child_process";
+import { existsSync, mkdirSync, createWriteStream } from "node:fs";
+import path from "node:path";
+import net from "node:net";
+
+const isDev = !!process.env.VITE_DEV_SERVER_URL;
+const CORE_PORT = Number(process.env.AI_TRADER_PORT || 8765);
+const CORE_URL = `http://127.0.0.1:${CORE_PORT}`;
+
+let mainWindow: BrowserWindow | null = null;
+let coreProcess: ChildProcess | null = null;
+let coreSpawnedByUs = false;
+
+function coreDir(): string {
+  if (app.isPackaged) return path.join(process.resourcesPath, "core");
+  return path.resolve(__dirname, "..", "..", "core");
+}
+
+function skillsDir(): string {
+  if (app.isPackaged) return path.join(process.resourcesPath, "skills");
+  return path.resolve(__dirname, "..", "..", "skills");
+}
+
+function pythonCandidates(): { cmd: string; args: string[] }[] {
+  if (process.env.AI_TRADER_PYTHON) {
+    return [{ cmd: process.env.AI_TRADER_PYTHON, args: [] }];
+  }
+  if (process.platform === "win32") {
+    return [
+      { cmd: "py", args: ["-3.12"] },
+      { cmd: "py", args: ["-3"] },
+      { cmd: "python", args: [] },
+    ];
+  }
+  return [
+    { cmd: "python3", args: [] },
+    { cmd: "python", args: [] },
+  ];
+}
+
+function portOpen(port: number, timeout = 700): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (value: boolean) => {
+      if (done) return;
+      done = true;
+      socket.destroy();
+      resolve(value);
+    };
+    socket.setTimeout(timeout);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+    socket.connect(port, "127.0.0.1");
+  });
+}
+
+async function coreHealthy(): Promise<boolean> {
+  try {
+    const res = await fetch(`${CORE_URL}/api/health`, { signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return false;
+    const body = (await res.json()) as { app?: string };
+    return body.app === "AI-TRADER";
+  } catch {
+    return false;
+  }
+}
+
+async function waitForCore(attempts = 60): Promise<boolean> {
+  for (let i = 0; i < attempts; i += 1) {
+    if (await coreHealthy()) return true;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+}
+
+function startCore(): void {
+  if (coreProcess) return;
+  const logs = path.join(app.getPath("userData"), "logs");
+  mkdirSync(logs, { recursive: true });
+  const log = createWriteStream(path.join(logs, "core.log"), { flags: "a" });
+  const dir = coreDir();
+  const entry = path.join(dir, "main.py");
+
+  if (!existsSync(entry)) {
+    dialog.showErrorBox("AI-TRADER", `Core not found at ${entry}`);
+    return;
+  }
+
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    AI_TRADER_HOME: process.env.AI_TRADER_HOME || path.join(app.getPath("userData")),
+    AI_TRADER_SKILLS: process.env.AI_TRADER_SKILLS || skillsDir(),
+    AI_TRADER_PORT: String(CORE_PORT),
+    PYTHONUNBUFFERED: "1",
+    PYTHONIOENCODING: "utf-8",
+  };
+  if (app.isPackaged) {
+    env.AI_TRADER_UI = path.join(process.resourcesPath, "ui");
+  }
+
+  for (const candidate of pythonCandidates()) {
+    try {
+      const child = spawn(candidate.cmd, [...candidate.args, entry], {
+        cwd: dir,
+        env,
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      child.stdout?.pipe(log);
+      child.stderr?.pipe(log);
+      child.on("error", () => {
+        /* try next candidate */
+      });
+      child.on("exit", (code) => {
+        log.write(`\n[core exited ${code}]\n`);
+        coreProcess = null;
+      });
+      coreProcess = child;
+      coreSpawnedByUs = true;
+      log.write(`\n[start] ${candidate.cmd} ${candidate.args.join(" ")} ${entry}\n`);
+      break;
+    } catch {
+      continue;
+    }
+  }
+}
+
+function stopCore(): void {
+  if (!coreProcess || !coreSpawnedByUs) return;
+  try {
+    if (process.platform === "win32" && coreProcess.pid) {
+      spawn("taskkill", ["/pid", String(coreProcess.pid), "/T", "/F"], { windowsHide: true });
+    } else {
+      coreProcess.kill("SIGTERM");
+    }
+  } catch {
+    /* ignore */
+  }
+  coreProcess = null;
+}
+
+async function createWindow(): Promise<void> {
+  mainWindow = new BrowserWindow({
+    width: 1320,
+    height: 880,
+    minWidth: 960,
+    minHeight: 640,
+    backgroundColor: "#faf9f5",
+    title: "AI-TRADER",
+    show: false,
+    autoHideMenuBar: true,
+    titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: true,
+    },
+  });
+
+  mainWindow.once("ready-to-show", () => mainWindow?.show());
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  if (isDev) {
+    await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL as string);
+    mainWindow.webContents.openDevTools({ mode: "detach" });
+  } else {
+    await mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+  }
+}
+
+ipcMain.handle("core:url", () => CORE_URL);
+ipcMain.handle("core:restart", async () => {
+  stopCore();
+  await startCore();
+  return waitForCore();
+});
+ipcMain.handle("app:info", () => ({
+  version: app.getVersion(),
+  platform: process.platform,
+  coreUrl: CORE_URL,
+  packaged: app.isPackaged,
+}));
+
+app.whenReady().then(async () => {
+  const already = await coreHealthy();
+  if (!already) startCore();
+  await waitForCore(already ? 2 : 60);
+  await createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", stopCore);

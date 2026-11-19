@@ -1,0 +1,63 @@
+[
+  {
+    "id": "google-ai-studio",
+    "name": "Google AI Studio (Gemini)",
+    "kind": "openai",
+    "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+    "model": "gemini-3.8-flash",
+    "models": ["gemini-3.8-flash", "gemini-4-hydrogen", "gemini-3.6-flash", "gemini-3.5-flash-lite"],
+    "notes": "Free tier, no card. OpenAI-compatible endpoint.",
+    "is_default": true
+  },
+  {
+    "id": "groq",
+    "name": "Groq (fast free)",
+    "kind": "openai",
+    "base_url": "https://api.groq.com/openai/v1",
+    "model": "qwen/qwen3.8-27b",
+    "models": ["qwen/qwen3.8-27b", "openai/gpt-oss-120b", "openai/gpt-oss-20b"],
+    "notes": "Free plan, very low latency."
+  },
+  {
+    "id": "nvidia-nim",
+    "name": "NVIDIA NIM",
+    "kind": "openai",
+    "base_url": "https://integrate.api.nvidia.com/v1",
+    "model": "mistralai/mistral-large-4-1t-a52b",
+    "models": [
+      "mistralai/mistral-large-4-1t-a52b",
+      "poolside/laguna-xs-2.1",
+      "minimaxai/minimax-m3.1-flash",
+      "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    ],
+    "notes": "Free developer tier; shared queue can be slow."
+  },
+  {
+    "id": "openrouter",
+    "name": "OpenRouter (free auto)",
+    "kind": "openai",
+    "base_url": "https://openrouter.ai/api/v1",
+    "model": "openrouter/free",
+    "models": ["openrouter/free", "nvidia/nemotron-3-ultra-550b-a55b:free", "cohere/north-mini-code:free"],
+    "headers": {"HTTP-Referer": "http://localhost", "X-Title": "AI-TRADER"},
+    "notes": "Free models rotate; /api/v1/models lists them."
+  },
+  {
+    "id": "cerebras",
+    "name": "Cerebras (fast free)",
+    "kind": "openai",
+    "base_url": "https://api.cerebras.ai/v1",
+    "model": "gpt-oss-120b",
+    "models": ["gpt-oss-120b", "qwen-3.8-27b"],
+    "notes": "Free shared inference, very high tokens/sec."
+  },
+  {
+    "id": "ollama-local",
+    "name": "Ollama (local, offline)",
+    "kind": "openai",
+    "base_url": "http://127.0.0.1:11434/v1",
+    "model": "qwen2.5:7b",
+    "models": ["qwen2.5:7b", "llama3.2:3b", "deepseek-r1:8b"],
+    "notes": "No key needed. Start Ollama first: ollama serve."
+  }
+]

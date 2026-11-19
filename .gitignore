@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data (never commit)
+*.db
+*.db-journal
+*.db-wal
+vault.key
+*.log
+logs/
+data/
+
+# Node / UI
+node_modules/
+app/dist/
+app/dist-electron/
+app/release/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/ios/App/Pods/
+mobile/ios/DerivedData/
+
+# Secrets
+.env
+.env.local
+*.keystore
+*.jks
+*.p12
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

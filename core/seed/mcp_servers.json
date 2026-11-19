@@ -1,0 +1,43 @@
+[
+  {
+    "id": "context7",
+    "name": "Context7 (library docs)",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@upstash/context7-mcp"],
+    "category": "docs",
+    "enabled": false,
+    "notes": "Up-to-date library documentation for coding agents."
+  },
+  {
+    "id": "playwright",
+    "name": "Playwright (browser)",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "category": "browser",
+    "enabled": false,
+    "notes": "Real browser automation: scrape, click, screenshot, fill forms."
+  },
+  {
+    "id": "firecrawl",
+    "name": "Firecrawl (crawl + scrape)",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "firecrawl-mcp"],
+    "env": {"FIRECRAWL_API_KEY": ""},
+    "category": "browser",
+    "enabled": false,
+    "notes": "Search, scrape, crawl and map websites. Needs a Firecrawl key (free tier)."
+  },
+  {
+    "id": "fetch",
+    "name": "Fetch (web pages)",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-fetch"],
+    "category": "browser",
+    "enabled": false,
+    "notes": "Fetches a URL and converts it to Markdown. Needs uv installed."
+  }
+]

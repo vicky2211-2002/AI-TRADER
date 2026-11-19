@@ -1,0 +1,12 @@
+# AI-TRADER core — runtime dependencies
+# Python 3.11 or 3.12
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32,<1.0
+pydantic>=2.7,<3.0
+httpx>=0.27,<1.0
+cryptography>=42.0          # Fernet vault (AES-128-CBC + HMAC); otherwise obfuscated only
+
+# --- Optional broker adapters (install only what you use) -------------------
+# MetaTrader5>=5.0.45       # Windows only; local MT5 terminal bridge
+# ccxt>=4.4                 # crypto exchanges: Binance, Bybit, OKX, Kraken...
+# alpaca-py>=0.33           # not required: the Alpaca adapter uses REST directly

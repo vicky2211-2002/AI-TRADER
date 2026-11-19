@@ -1,0 +1,207 @@
+[
+  {
+    "id": "context7",
+    "name": "Context7",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@upstash/context7-mcp"],
+    "category": "docs",
+    "notes": "Up-to-date library documentation (npm @upstash/context7-mcp)."
+  },
+  {
+    "id": "playwright",
+    "name": "Playwright",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@playwright/mcp@latest"],
+    "category": "browser",
+    "notes": "Browser automation, screenshots, scraping (npm @playwright/mcp)."
+  },
+  {
+    "id": "firecrawl",
+    "name": "Firecrawl",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "firecrawl-mcp"],
+    "env": {"FIRECRAWL_API_KEY": ""},
+    "category": "browser",
+    "notes": "Search, scrape, crawl, map (npm firecrawl-mcp). Free tier available."
+  },
+  {
+    "id": "fetch",
+    "name": "Fetch",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-fetch"],
+    "category": "browser",
+    "notes": "URL -> Markdown. Needs uv: pip install uv."
+  },
+  {
+    "id": "tavily",
+    "name": "Tavily Search",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "tavily-mcp"],
+    "env": {"TAVILY_API_KEY": ""},
+    "category": "search",
+    "notes": "Agent-optimised web search (npm tavily-mcp)."
+  },
+  {
+    "id": "brave-search",
+    "name": "Brave Search",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": {"BRAVE_API_KEY": ""},
+    "category": "search",
+    "notes": "Independent web index (npm @modelcontextprotocol/server-brave-search)."
+  },
+  {
+    "id": "filesystem",
+    "name": "Filesystem",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "${HOME}/Documents"],
+    "category": "system",
+    "notes": "Read/write files inside an allow-listed folder only."
+  },
+  {
+    "id": "memory",
+    "name": "Memory (knowledge graph)",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"],
+    "category": "system",
+    "notes": "Persistent entities/relations across chats."
+  },
+  {
+    "id": "sequential-thinking",
+    "name": "Sequential Thinking",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+    "category": "reasoning",
+    "notes": "Structured multi-step reasoning scratchpad."
+  },
+  {
+    "id": "chrome-devtools",
+    "name": "Chrome DevTools",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "chrome-devtools-mcp@latest"],
+    "category": "browser",
+    "notes": "Inspect a live Chrome session: network, console, performance."
+  },
+  {
+    "id": "puppeteer",
+    "name": "Puppeteer",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+    "category": "browser",
+    "notes": "Alternative browser automation stack."
+  },
+  {
+    "id": "github",
+    "name": "GitHub",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": ""},
+    "category": "dev",
+    "notes": "Repos, issues, PRs, code search."
+  },
+  {
+    "id": "postgres",
+    "name": "PostgreSQL",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/db"],
+    "category": "data",
+    "notes": "Read-only SQL over a Postgres database."
+  },
+  {
+    "id": "notion",
+    "name": "Notion",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@notionhq/notion-mcp-server"],
+    "env": {"NOTION_API_TOKEN": ""},
+    "category": "productivity",
+    "notes": "Read and write Notion pages/databases."
+  },
+  {
+    "id": "slack",
+    "name": "Slack",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-slack"],
+    "env": {"SLACK_BOT_TOKEN": "", "SLACK_TEAM_ID": ""},
+    "category": "productivity",
+    "notes": "Channel history and messages."
+  },
+  {
+    "id": "ccxt",
+    "name": "CCXT markets",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "ccxt-mcp"],
+    "category": "trading",
+    "notes": "Exchange market data via CCXT. Keep read-only keys."
+  },
+  {
+    "id": "alpaca",
+    "name": "Alpaca trading",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["alpaca-mcp-server"],
+    "env": {"ALPACA_API_KEY": "", "ALPACA_SECRET_KEY": "", "ALPACA_PAPER": "true"},
+    "category": "trading",
+    "notes": "Official Alpaca MCP (PyPI alpaca-mcp-server). Paper by default."
+  },
+  {
+    "id": "tradingview",
+    "name": "TradingView (community)",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "tradingview-mcp"],
+    "category": "trading",
+    "notes": "Community screener/quote server. Review the source before enabling."
+  },
+  {
+    "id": "yfinance",
+    "name": "Yahoo Finance (community)",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-yfinance"],
+    "category": "trading",
+    "notes": "Yahoo quotes/candles. Alpha package - may change."
+  },
+  {
+    "id": "time",
+    "name": "Time",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-time"],
+    "category": "system",
+    "notes": "Timezone conversion and current time."
+  },
+  {
+    "id": "git",
+    "name": "Git",
+    "transport": "stdio",
+    "command": "uvx",
+    "args": ["mcp-server-git", "--repository", "."],
+    "category": "dev",
+    "notes": "Local repository history and diffs."
+  },
+  {
+    "id": "everything",
+    "name": "MCP Everything (test server)",
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-everything"],
+    "category": "system",
+    "notes": "Reference server for testing the MCP connection."
+  }
+]
