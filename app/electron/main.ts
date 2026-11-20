@@ -34,6 +34,27 @@ function bundledCore(): string | null {
   return existsSync(full) ? full : null;
 }
 
+/**
+ * Bundled Node.js (includes npx) for MCP servers.
+ * Shipped as resources/node/node.exe + resources/node/npx.cmd on Windows.
+ */
+function bundledNodeDir(): string | null {
+  if (!app.isPackaged) return null;
+  const dir = path.join(process.resourcesPath, "node");
+  return existsSync(dir) ? dir : null;
+}
+
+/**
+ * Bundled uv binary for MCP servers.
+ * Shipped as resources/uv/uv.exe on Windows, resources/uv/uv on macOS/Linux.
+ */
+function bundledUvPath(): string | null {
+  if (!app.isPackaged) return null;
+  const exe = process.platform === "win32" ? "uv.exe" : "uv";
+  const full = path.join(process.resourcesPath, "uv", exe);
+  return existsSync(full) ? full : null;
+}
+
 function pythonCandidates(): { cmd: string; args: string[] }[] {
   if (process.env.AI_TRADER_PYTHON) {
     return [{ cmd: process.env.AI_TRADER_PYTHON, args: [] }];
@@ -115,8 +136,17 @@ function startCore(): void {
   }
 
   const lanIp = getLanIp();
+  // Build PATH with bundled Node.js (npx) and uv so MCP servers work out of the box
+  const extraPaths: string[] = [];
+  const nodeDir = bundledNodeDir();
+  if (nodeDir) extraPaths.push(nodeDir);
+  const uvPath = bundledUvPath();
+  if (uvPath) extraPaths.push(path.dirname(uvPath));
+  const pathEnv = extraPaths.length > 0 ? extraPaths.join(path.delimiter) + path.delimiter + (process.env.PATH || "") : (process.env.PATH || "");
+
   const env: Record<string, string | undefined> = {
     ...process.env,
+    PATH: pathEnv,
     AI_TRADER_HOME: process.env.AI_TRADER_HOME || path.join(app.getPath("userData")),
     AI_TRADER_SKILLS: process.env.AI_TRADER_SKILLS || skillsDir(),
     AI_TRADER_PORT: String(CORE_PORT),

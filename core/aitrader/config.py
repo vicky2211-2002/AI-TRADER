@@ -46,7 +46,7 @@ PORT = int(os.environ.get("AI_TRADER_PORT", "8765"))
 TOKEN = os.environ.get("AI_TRADER_TOKEN", "")
 
 APP_NAME = "AI-TRADER"
-APP_VERSION = "0.1.2"
+APP_VERSION = "0.1.3"
 API_PREFIX = "/api"
 
 # Origins allowed to call the local core. Electron file:// sends "null".
@@ -92,3 +92,4 @@ SAFE_DEFAULTS = {
     "autopilot_cooldown_sec": 900,
     "autopilot_allow_live_auto": False,
 }
+

@@ -37,6 +37,9 @@ app/release-*/
 app/dist/
 app/dist-electron/
 app/node_modules/
+# Bundled runtimes (downloaded at build time)
+app/node/
+app/uv/
 # App icons are source, not build output
 !app/build/
 !app/build/*
