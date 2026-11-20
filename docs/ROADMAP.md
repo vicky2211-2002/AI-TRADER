@@ -78,7 +78,7 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 
 ---
 
-## 0.1.3 — Truly plug-and-play (done)
+## 0.1.4 — Truly plug-and-play (done)
 
 | Area | Status | Notes |
 |------|--------|-------|
@@ -88,12 +88,19 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 | MetaTrader5 bundled in CI | ✅ | CI installs it on Windows and **fails the build** if it is missing |
 | Accurate UI status | ✅ | Shows "bundled with AI-TRADER" instead of "install Node.js" |
 | Clean-PATH verification | ✅ | Verified with `PATH=C:\Windows\System32;C:\Windows`: npx + uvx + MT5 all live |
+| Unix `npx` works | ✅ | Node's Unix `bin/npx` is a JS shim that breaks in a flat bundle; CI ships a POSIX wrapper instead |
+| Packaged-runtime verification | ✅ | CI runs `npx`/`uvx` from the **packaged** output, so a lost executable bit cannot ship |
+| All four platforms | ✅ | Windows `.exe` + portable, macOS `.dmg` + `.zip`, Linux `.deb` + `.tar.gz`, Android `.apk` |
 
-### Known gaps in 0.1.3
+### Known gaps in 0.1.4
 
 - The MetaTrader 5 **terminal** is proprietary and cannot be bundled — the user
   installs it from their broker and logs in once. The Python bridge is bundled.
-- macOS/Linux builds ship `node`/`uv` for the host arch only (arm64).
+- macOS/Linux builds ship `node`/`uv` for the host arch only (arm64 macOS,
+  x64 Linux).
+- Builds are unsigned (no Apple Developer Program / Windows code-signing
+  certificate), so macOS needs right-click → Open and Windows SmartScreen may
+  warn once.
 
 ---
 

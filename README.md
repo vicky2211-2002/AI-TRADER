@@ -57,7 +57,29 @@ built the other way around:
 
 Download the installer for your OS from
 <https://github.com/vicky2211-2002/AI-TRADER/releases> and run it. The desktop
-builds include their own Python core, so there is nothing else to install.
+builds include their own Python core **and** the Node.js/uv runtimes that MCP
+servers need, so there is nothing else to install.
+
+| Platform | File (v0.1.4) | Notes |
+|----------|---------------|-------|
+| **Windows** | `AI-TRADER-0.1.4-x64.exe` | Installer. **Start here.** |
+| Windows | `AI-TRADER-0.1.4-x64-portable.exe` | No install, no admin rights |
+| **macOS** | `AI-TRADER-0.1.4-arm64.dmg` | Unsigned → right-click → Open |
+| macOS | `AI-TRADER-0.1.4-arm64.zip` | Archive |
+| **Linux** | `AI-TRADER-0.1.4-amd64.deb` | Debian/Ubuntu (`sudo dpkg -i`) |
+| Linux | `AI-TRADER-0.1.4-x64.tar.gz` | Extract and run |
+| **Android** | `AI-TRADER-0.1.4-android-debug.apk` | Remote control for the core on your PC |
+
+Every desktop build ships:
+
+- a frozen Python core (`resources/core-runtime/`) — **no Python, no pip**
+- Node.js + the full npm CLI (`resources/node/`) — **no Node.js for `npx`**
+- uv + uvx (`resources/uv/`) — **no `pip install uv` for `uvx`**
+- the MetaTrader5 Python bridge (Windows) — **no `pip install MetaTrader5`**
+
+The only external piece is the **MetaTrader 5 terminal** itself: it is
+proprietary, must be installed from your broker, and must be logged into once.
+Skip it entirely and use the Paper broker or the MetaAPI cloud bridge.
 
 ### Build from source (Windows)
 
@@ -82,7 +104,7 @@ To reproduce the shipped installer, freeze the core first and then package:
 ```powershell
 py -3.12 core\build_sidecar.py --clean   # -> app\core-runtime\aitrader-core.exe
 cd app
-npm run dist:win                         # -> app\release\AI-TRADER-0.1.1-x64.exe
+npm run dist:win                         # -> app\release\AI-TRADER-0.1.4-x64.exe
 ```
 
 After `npm run build:web`, the core also serves the built UI itself at

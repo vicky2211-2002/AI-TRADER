@@ -353,10 +353,49 @@ crash the first time an MCP server starts. The CI step copies the whole
 **`uvx` is a separate binary from `uv`.** The catalog invokes `uvx`, so copying
 only `uv.exe` leaves every uv-based server broken.
 
+**On Unix, `npx` must be a wrapper, not Node's `bin/npx`.** Node's Unix
+`bin/npx` is a JavaScript shim that resolves `../lib/cli.js` and
+`./npm-cli.js` **relative to its own file**. The Unix tarball puts the npm
+package at `lib/node_modules/npm`, so copying `bin/npx` next to a flat
+`node_modules/npm` breaks those two requires and `npx` dies on the first MCP
+server start. The CI step writes a POSIX wrapper instead:
+
+```sh
+#!/bin/sh
+DIR=$(cd "$(dirname "$0")" && pwd)
+exec "$DIR/node" "$DIR/node_modules/npm/bin/npx-cli.js" "$@"
+```
+
+That is exactly what `npx.cmd` does on Windows, and it is known to work.
+
+**CI verifies the runtimes twice.** Once against the source folder, and once
+against the **packaged** output — a lost executable bit (Unix) or a missing
+`.cmd` (Windows) must fail the build, not the user's first MCP server.
+
 At startup the core calls `_setup_bundled_tools()` (`core/main.py`), which puts
 `resources/node` and `resources/uv` on `PATH` itself. Electron also injects
 them, but the core does not depend on that — it finds the folders relative to
 `sys.executable` and works even if it is launched by hand.
+
+### Linux packaging needs a homepage
+
+electron-builder's `deb` target (FPM) refuses to build without a project URL:
+
+```
+Error: Please specify project homepage, see https://electron.build/configuration.md#Metadata-homepage
+```
+
+`app/package.json` must declare `homepage` (the `repository` fallback does not
+apply unless `repository.type` is `github`):
+
+```json
+"homepage": "https://github.com/vicky2211-2002/AI-TRADER",
+"repository": { "type": "git", "url": "https://github.com/vicky2211-2002/AI-TRADER.git" }
+```
+
+Pin `linux.artifactName` too, otherwise the deb is named after the npm package
+name (`ai-trader_0.1.4_amd64.deb`) instead of the branded, version-stamped
+`AI-TRADER-0.1.4-x64.deb`.
 
 ### MetaTrader5 in the frozen core
 
