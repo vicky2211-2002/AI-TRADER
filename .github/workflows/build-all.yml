@@ -244,7 +244,12 @@ jobs:
             CORE="app/core-runtime/aitrader-core"
           fi
           chmod +x "$CORE"
-          "$CORE" --port "$PORT" > /tmp/core-verify.log 2>&1 &
+          # Keep the files inside the workspace. An absolute /tmp path is
+          # NOT portable here: on Windows the shell is Git Bash (where /tmp
+          # is a Git-Bash-specific folder) while "python" is Windows Python
+          # (where /tmp means C:\tmp). A workspace-relative path resolves
+          # identically for both.
+          "$CORE" --port "$PORT" > core-verify.log 2>&1 &
           CORE_PID=$!
           trap 'kill $CORE_PID 2>/dev/null || true' EXIT
 
@@ -258,18 +263,18 @@ jobs:
           done
           if [ -z "$ready" ]; then
             echo "::error title=core::frozen core did not start on port ${PORT}"
-            cat /tmp/core-verify.log || true
+            cat core-verify.log || true
             exit 1
           fi
 
-          curl -fsS "http://127.0.0.1:${PORT}/api/system" -o /tmp/system.json
-          cat /tmp/system.json; echo
+          curl -fsS "http://127.0.0.1:${PORT}/api/system" -o system-verify.json
+          cat system-verify.json; echo
           python - <<'PY'
           import json
           import os
           import sys
 
-          with open("/tmp/system.json", encoding="utf-8") as fh:
+          with open("system-verify.json", encoding="utf-8") as fh:
               data = json.load(fh)
 
           errors = []
@@ -296,10 +301,12 @@ jobs:
           # Any module the bundle failed to collect shows up here as a
           # ModuleNotFoundError. This is the check that would have caught
           # numpy going missing (MetaTrader5 imports it from C code).
-          if grep -E "ModuleNotFoundError|ImportError:" /tmp/core-verify.log; then
+          if grep -E "ModuleNotFoundError|ImportError:" core-verify.log; then
             echo "::error title=core::frozen core logged a missing module"
             exit 1
           fi
+
+          rm -f system-verify.json core-verify.log
 
       - name: Build UI + Electron main
         shell: bash
