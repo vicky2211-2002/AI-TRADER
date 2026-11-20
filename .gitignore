@@ -37,6 +37,9 @@ app/release-*/
 app/dist/
 app/dist-electron/
 app/node_modules/
+# App icons are source, not build output
+!app/build/
+!app/build/*
 
 # Mobile build
 mobile/node_modules/

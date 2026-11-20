@@ -58,6 +58,23 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 - Android discovers nothing automatically: the user types the PC's LAN IP.
 - iOS is not built (needs the Apple Developer Program and a Mac).
 - `ccxt` is not bundled; install it only if you need a crypto exchange adapter.
+- The Linux job failed at packaging; the reason was only visible in the raw log.
+
+---
+
+## 0.1.2 — Packaging polish
+
+| Area | Status | Notes |
+|------|--------|-------|
+| App icon on every platform | ✅ | `app/build/icon.png` + `icon.ico`; wired into electron-builder |
+| Packaging failures explain themselves | ✅ | electron-builder tail is emitted as run annotations |
+| `deb` metadata valid | ✅ | `author` is an object with a maintainer email |
+| Windows installer rebuilt from this tree | ✅ | 0.1.2 NSIS + portable verified locally |
+
+### Known gaps in 0.1.2
+
+- Same signing gap as 0.1.1: unsigned binaries.
+- Screenshots for the README are still missing.
 
 ---
 

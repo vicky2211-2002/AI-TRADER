@@ -106,6 +106,8 @@ jobs:
           npm run build
 
       - name: Package installer
+        id: package
+        continue-on-error: true
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -114,7 +116,21 @@ jobs:
           cd app
           npx electron-builder --${{ matrix.target }} --publish never 2>&1 | tee ../electron-builder.log
 
+      # Surface the real reason in the run annotations; the raw step log is not
+      # visible from the API, and guessing is how the last three runs were wasted.
+      - name: Report packaging failure
+        if: steps.package.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "electron-builder failed for ${{ matrix.name }}"
+          tail -40 electron-builder.log | while IFS= read -r line; do
+            line="$(printf '%s' "$line" | tr -d '\r' | cut -c1-900)"
+            [ -n "$line" ] && echo "::error title=electron-builder::$line"
+          done
+          exit 1
+
       - name: Collect installers
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -131,9 +147,8 @@ jobs:
           echo "--- produced ---"
           ls -lh out || true
           if [ -z "$(ls -A out 2>/dev/null || true)" ]; then
-            echo "::error::electron-builder produced no installers for ${{ matrix.name }}"
-            echo "--- last 100 log lines ---"
-            tail -100 electron-builder.log || true
+            echo "::error title=no-artifacts::${{ matrix.name }} produced no installers"
+            tail -40 electron-builder.log || true
             exit 1
           fi
 
