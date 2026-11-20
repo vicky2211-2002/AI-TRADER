@@ -142,9 +142,25 @@ jobs:
             rm -rf /tmp/node && mkdir -p /tmp/node
             tar -xf /tmp/node.tar.xz -C /tmp/node
             cp "/tmp/node/${ARCHIVE}/bin/node" app/node/
-            cp "/tmp/node/${ARCHIVE}/bin/npx" app/node/
             cp -r "/tmp/node/${ARCHIVE}/lib/node_modules/npm" app/node/node_modules/
-            chmod +x app/node/node app/node/npx
+            # Node's Unix bin/npx is a JavaScript shim that resolves
+            # "../lib/cli.js" and "./npm-cli.js" RELATIVE TO ITS OWN FILE.
+            # Copied flat into app/node/ those paths do not exist, so npx dies
+            # with MODULE_NOT_FOUND (or an ESM parse error) the moment an MCP
+            # server starts. Ship a POSIX wrapper that calls the npm CLI
+            # inside the package instead — the same thing npx.cmd does on
+            # Windows, which is known to work.
+            printf '%s\n' \
+              '#!/bin/sh' \
+              'DIR=$(cd "$(dirname "$0")" && pwd)' \
+              'exec "$DIR/node" "$DIR/node_modules/npm/bin/npx-cli.js" "$@"' \
+              > app/node/npx
+            printf '%s\n' \
+              '#!/bin/sh' \
+              'DIR=$(cd "$(dirname "$0")" && pwd)' \
+              'exec "$DIR/node" "$DIR/node_modules/npm/bin/npm-cli.js" "$@"' \
+              > app/node/npm
+            chmod +x app/node/node app/node/npx app/node/npm
           fi
           echo "Node.js bundled:"; ls -la app/node/
           if [ ! -f app/node/node_modules/npm/bin/npx-cli.js ]; then
@@ -241,6 +257,44 @@ jobs:
             [ -n "$line" ] && echo "::error title=electron-builder::$line"
           done
           exit 1
+
+      # The bundle must still work AFTER packaging: electron-builder copies
+      # extraResources, and a lost executable bit turns "npx" into a
+      # permission error on Linux/macOS. Run the packaged binaries for real.
+      - name: Verify packaged MCP runtimes
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Locate the packaged resources/node folder whatever electron-builder
+          # called the unpacked directory (linux-unpacked, mac-arm64/AI-TRADER.app...).
+          NODE_DIR="$(find app/release -type d -ipath '*/resources/node' -print -quit 2>/dev/null || true)"
+          if [ -z "$NODE_DIR" ]; then
+            echo "::notice title=mcp-runtimes::No unpacked build found; packaging itself reported the failure"
+            exit 0
+          fi
+          RES_DIR="$(dirname "$NODE_DIR")"
+          UV_DIR="$RES_DIR/uv"
+          echo "packaged node: $NODE_DIR"
+          echo "packaged uv:   $UV_DIR"
+          ls -la "$NODE_DIR" "$UV_DIR" || true
+
+          failed=0
+          for exe in "$NODE_DIR/node" "$NODE_DIR/npx" "$UV_DIR/uv" "$UV_DIR/uvx"; do
+            if [ ! -x "$exe" ]; then
+              echo "::error title=mcp-runtimes::not executable after packaging: $exe"
+              failed=1
+            fi
+          done
+          if [ "$failed" -ne 0 ]; then
+            exit 1
+          fi
+
+          "$NODE_DIR/node" --version
+          "$NODE_DIR/npx" --version
+          "$UV_DIR/uv" --version
+          "$UV_DIR/uvx" --version
+          echo "::notice title=mcp-runtimes::Packaged Node.js and uv both execute"
 
       - name: Collect installers
         if: always()
@@ -430,7 +484,7 @@ jobs:
           missing=""
           ls upload/*.exe >/dev/null 2>&1 || missing="$missing windows"
           { ls upload/*.dmg >/dev/null 2>&1 || ls upload/*-mac.zip >/dev/null 2>&1 || ls upload/*.zip >/dev/null 2>&1; } || missing="$missing macos"
-          ls upload/*.AppImage >/dev/null 2>&1 || missing="$missing linux"
+          { ls upload/*.deb >/dev/null 2>&1 || ls upload/*.tar.gz >/dev/null 2>&1 || ls upload/*.AppImage >/dev/null 2>&1; } || missing="$missing linux"
           ls upload/*.apk >/dev/null 2>&1 || missing="$missing android"
           echo "MISSING=${missing# }" >> "$GITHUB_ENV"
           if [ -n "$missing" ]; then
@@ -470,6 +524,7 @@ jobs:
                 *.zip)        p="macOS";   d="Zip archive" ;;
                 *.AppImage)   p="Linux";   d="AppImage — chmod +x and run" ;;
                 *.deb)        p="Linux";   d="Debian/Ubuntu package" ;;
+                *.tar.gz)     p="Linux";   d="Portable tarball — extract and run" ;;
                 *.apk)        p="Android"; d="Debug APK — remote control for the core on your PC" ;;
                 *)            p="Other";   d="Build artifact" ;;
               esac
@@ -491,6 +546,7 @@ jobs:
             echo "## Notes"
             echo
             echo "- Windows/macOS/Linux desktop apps bundle a frozen Python core (\`resources/core-runtime\`)."
+            echo "- Node.js (\`npx\`) and uv (\`uvx\`) are bundled too — you do not install them to run MCP servers."
             echo "- The Android APK is a remote control only. Point it at \`http://<your-PC-LAN-IP>:8765\`."
             echo "- MT5 is Windows-only; on macOS/Linux use MetaAPI, CCXT, Alpaca, OANDA or a webhook."
             echo "- No profit is promised. Backtests and demo runs are not evidence of future returns."
