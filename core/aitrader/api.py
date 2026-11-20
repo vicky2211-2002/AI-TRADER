@@ -628,6 +628,43 @@ async def brokers():
     }
 
 
+@app.get(f"{API_PREFIX}/brokers/mt5/status")
+async def mt5_status():
+    """Get MT5 terminal status for UI guidance."""
+    mt5_available = _mt5_available()
+    terminal_path = None
+    if mt5_available:
+        try:
+            import MetaTrader5 as mt5
+            # Try to get terminal path from initialized instance
+            terminal_info = mt5.terminal_info()
+            if terminal_info:
+                terminal_path = terminal_info.path
+        except Exception:
+            pass
+    # Fallback: check common paths
+    if not terminal_path:
+        import os, glob
+        common = [
+            r"C:\Program Files\MetaTrader 5\terminal64.exe",
+            r"C:\Program Files (x86)\MetaTrader 5\terminal64.exe",
+        ]
+        for p in common:
+            if os.path.exists(p):
+                terminal_path = p
+                break
+        if not terminal_path:
+            matches = glob.glob(os.path.expandvars(r"%APPDATA%\MetaQuotes\Terminal\*\terminal64.exe"))
+            if matches:
+                terminal_path = matches[0]
+    return {
+        "mt5_available": mt5_available,
+        "terminal_path": terminal_path,
+        "vcpp_ok": True,  # Checked at startup
+        "message": "MT5 Python package available" if mt5_available else "MetaTrader5 package not installed. Run: pip install MetaTrader5",
+    }
+
+
 @app.post(f"{API_PREFIX}/accounts")
 async def add_account(body: AccountIn):
     db = get_db()

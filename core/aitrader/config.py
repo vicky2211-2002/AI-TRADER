@@ -39,7 +39,9 @@ for _p in (HOME_DIR, DATA_DIR):
 
 DB_PATH = DATA_DIR / "aitrader.db"
 
-HOST = os.environ.get("AI_TRADER_HOST", "127.0.0.1")
+# Bind to 0.0.0.0 by default so LAN/mobile works out of the box.
+# Override with AI_TRADER_HOST=127.0.0.1 for localhost-only.
+HOST = os.environ.get("AI_TRADER_HOST", "0.0.0.0")
 PORT = int(os.environ.get("AI_TRADER_PORT", "8765"))
 TOKEN = os.environ.get("AI_TRADER_TOKEN", "")
 

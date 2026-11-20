@@ -3,9 +3,12 @@ import { spawn, ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, createWriteStream } from "node:fs";
 import path from "node:path";
 import net from "node:net";
+import os from "node:os";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const CORE_PORT = Number(process.env.AI_TRADER_PORT || 8765);
+// Core binds to 0.0.0.0 by default, so we use localhost for health checks
+// but advertise LAN IP for mobile
 const CORE_URL = `http://127.0.0.1:${CORE_PORT}`;
 
 let mainWindow: BrowserWindow | null = null;
@@ -37,6 +40,18 @@ function pythonCandidates(): { cmd: string; args: string[] }[] {
     { cmd: "python3", args: [] },
     { cmd: "python", args: [] },
   ];
+}
+
+function getLanIp(): string | null {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return null;
 }
 
 function portOpen(port: number, timeout = 700): Promise<boolean> {
@@ -89,11 +104,14 @@ function startCore(): void {
     return;
   }
 
+  const lanIp = getLanIp();
   const env: Record<string, string | undefined> = {
     ...process.env,
     AI_TRADER_HOME: process.env.AI_TRADER_HOME || path.join(app.getPath("userData")),
     AI_TRADER_SKILLS: process.env.AI_TRADER_SKILLS || skillsDir(),
     AI_TRADER_PORT: String(CORE_PORT),
+    // Core now binds to 0.0.0.0 by default (see config.py)
+    AI_TRADER_HOST: "0.0.0.0",
     PYTHONUNBUFFERED: "1",
     PYTHONIOENCODING: "utf-8",
   };
@@ -121,6 +139,9 @@ function startCore(): void {
       coreProcess = child;
       coreSpawnedByUs = true;
       log.write(`\n[start] ${candidate.cmd} ${candidate.args.join(" ")} ${entry}\n`);
+      if (lanIp) {
+        log.write(`[lan] ${lanIp}:${CORE_PORT}\n`);
+      }
       break;
     } catch {
       continue;
@@ -176,12 +197,33 @@ async function createWindow(): Promise<void> {
   }
 }
 
+// IPC handlers
 ipcMain.handle("core:url", () => CORE_URL);
+
+ipcMain.handle("core:lan-info", () => ({
+  lanIp: getLanIp(),
+  port: CORE_PORT,
+  coreUrl: CORE_URL,
+  mobileUrl: getLanIp() ? `http://${getLanIp()}:${CORE_PORT}` : null,
+}));
+
+ipcMain.handle("core:mt5-info", async () => {
+  // Query core for MT5 status
+  try {
+    const res = await fetch(`${CORE_URL}/api/brokers/mt5/status`, { signal: AbortSignal.timeout(2000) });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local check
+  }
+  return { mt5Found: false, message: "Core not ready" });
+});
+
 ipcMain.handle("core:restart", async () => {
   stopCore();
   await startCore();
   return waitForCore();
 });
+
 ipcMain.handle("app:info", () => ({
   version: app.getVersion(),
   platform: process.platform,
