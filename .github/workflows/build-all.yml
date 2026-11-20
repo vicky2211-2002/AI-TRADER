@@ -228,6 +228,79 @@ jobs:
           fi
           echo "::notice title=mcp-runtimes::Bundled Node.js and uv both execute"
 
+      # Boot the freshly frozen core and ask it what it can actually do.
+      # Checking that a folder exists is not the same as checking that the
+      # module imports: the MetaTrader5 folder shipped without numpy and the
+      # Brokers tab still said "not importable". This is the gate that
+      # catches that class of bug.
+      - name: Verify the frozen core
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT=8799
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            CORE="app/core-runtime/aitrader-core.exe"
+          else
+            CORE="app/core-runtime/aitrader-core"
+          fi
+          chmod +x "$CORE"
+          "$CORE" --port "$PORT" > /tmp/core-verify.log 2>&1 &
+          CORE_PID=$!
+          trap 'kill $CORE_PID 2>/dev/null || true' EXIT
+
+          ready=""
+          for _ in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ -z "$ready" ]; then
+            echo "::error title=core::frozen core did not start on port ${PORT}"
+            cat /tmp/core-verify.log || true
+            exit 1
+          fi
+
+          curl -fsS "http://127.0.0.1:${PORT}/api/system" -o /tmp/system.json
+          cat /tmp/system.json; echo
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          with open("/tmp/system.json", encoding="utf-8") as fh:
+              data = json.load(fh)
+
+          errors = []
+          # The runners already have Node.js installed, so "node is there"
+          # proves nothing. node_bundled/uv_bundled prove the core used the
+          # copies that ship inside the installer.
+          if not data.get("node"):
+              errors.append("npx not detected")
+          if not data.get("node_bundled"):
+              errors.append("npx did not resolve to the bundled copy")
+          if not data.get("uv"):
+              errors.append("uvx not detected")
+          if not data.get("uv_bundled"):
+              errors.append("uvx did not resolve to the bundled copy")
+          if os.name == "nt" and not data.get("mt5_available"):
+              errors.append("MetaTrader5 bridge is not importable")
+
+          if errors:
+              print("::error title=core::frozen core is missing " + "; ".join(errors))
+              sys.exit(1)
+          print("::notice title=core::frozen core boots with bundled node, uv and MT5")
+          PY
+
+          # Any module the bundle failed to collect shows up here as a
+          # ModuleNotFoundError. This is the check that would have caught
+          # numpy going missing (MetaTrader5 imports it from C code).
+          if grep -E "ModuleNotFoundError|ImportError:" /tmp/core-verify.log; then
+            echo "::error title=core::frozen core logged a missing module"
+            exit 1
+          fi
+
       - name: Build UI + Electron main
         shell: bash
         run: |

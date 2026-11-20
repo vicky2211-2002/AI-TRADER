@@ -8,5 +8,9 @@ cryptography>=42.0          # Fernet vault (AES-128-CBC + HMAC); otherwise obfus
 
 # --- Optional broker adapters (install only what you use) -------------------
 # MetaTrader5>=5.0.45       # Windows only; local MT5 terminal bridge
+# numpy is NOT optional: the MetaTrader5 native module imports numpy from
+# compiled C code, so PyInstaller's static analysis cannot see the dependency
+# and the frozen core raises "No module named 'numpy'" without it.
+numpy>=1.26,<3.0; sys_platform == "win32"
 # ccxt>=4.4                 # crypto exchanges: Binance, Bybit, OKX, Kraken...
 # alpaca-py>=0.33           # not required: the Alpaca adapter uses REST directly

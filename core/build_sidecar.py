@@ -70,6 +70,12 @@ def _hidden_imports() -> list[str]:
     ]
     if os.name == "nt":
         imports.append("MetaTrader5")
+        # The MetaTrader5 native module imports numpy from compiled C code.
+        # PyInstaller's static analysis walks the Python sources only, so it
+        # never sees that dependency and silently drops numpy. The frozen
+        # core then fails with "No module named 'numpy'" and the Brokers tab
+        # says MetaTrader5 is not importable. Name it explicitly.
+        imports.append("numpy")
     if os.environ.get("AI_TRADER_BUNDLE_CCXT") == "1":
         imports.append("ccxt")
     return imports
