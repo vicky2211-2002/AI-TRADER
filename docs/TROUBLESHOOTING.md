@@ -66,8 +66,14 @@ Kill it or start with `--port 8766` and change the URL in Settings.
 - **MT5 terminal not found:** Core prints warning; install MT5, log in once, enable
   **Tools → Options → Expert Advisors → Allow algorithmic trading**. The Python
   bridge itself is bundled — only the terminal is external.
-- **"MetaTrader5 is not importable":** the build shipped without the bridge.
-  Re-download the installer; a build without it fails CI on purpose.
+- **"MetaTrader5 is not importable":** the build shipped without the bridge
+  (or without numpy, which the native bridge imports from C code and
+  PyInstaller cannot detect on its own). Re-download the installer; a build
+  without it fails CI on purpose — the frozen core is booted and must report
+  `mt5_available: true`.
+- **`No module named 'numpy'` in the core log:** same root cause as above.
+  The `numpy` folder and `numpy.libs` (the native DLLs) must both exist under
+  `resources\core-runtime\_internal\`.
 
 ### MCP servers
 

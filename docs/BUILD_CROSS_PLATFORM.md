@@ -422,6 +422,57 @@ The `MetaTrader5` line is commented out in `core/requirements.txt` on purpose â€
 it has no macOS/Linux build and would break the other two jobs. The Windows job
 installs it explicitly and the build fails if it is missing.
 
+**`MetaTrader5` needs `numpy`, and PyInstaller cannot see that.**
+
+`MetaTrader5/__init__.py` does `from ._core import *`, and the native `_core.pyd`
+imports numpy from **compiled C code**. PyInstaller's static analysis walks
+Python sources only, so it never sees the dependency and silently drops numpy:
+
+```
+ModuleNotFoundError: No module named 'numpy'
+```
+
+The Brokers tab then says "MetaTrader5 package not installed" even though the
+folder is right there in the bundle. This bit the published v0.1.4 Windows
+build: the dev machine already had numpy installed, so numpy landed in the
+dependency graph by accident, while the CI runner (which installs only
+`core/requirements.txt`) produced a core without it.
+
+Two things are required, and both are in place:
+
+- `core/requirements.txt` lists `numpy>=1.26,<3.0; sys_platform == "win32"`.
+  It is not optional when the MT5 bridge is bundled.
+- `core/build_sidecar.py` adds `--hidden-import numpy` next to
+  `--hidden-import MetaTrader5`, so the collection is deliberate rather than an
+  accident of the build machine.
+
+### The frozen core must be booted, not just built
+
+Checking that a `MetaTrader5` folder exists is not the same as checking that
+the module imports â€” that is exactly how the numpy bug shipped. The workflow
+now has a **"Verify the frozen core"** step that starts the freshly built
+core and asks it what it can actually do:
+
+```bash
+"$CORE" --port 8799 > core-verify.log 2>&1 &
+curl -fsS "http://127.0.0.1:8799/api/system" -o system-verify.json
+```
+
+and then asserts that `/api/system` reports `node`, `node_bundled`, `uv` and
+`uv_bundled` as true, that `mt5_available` is true on Windows, and that the
+core log contains no `ModuleNotFoundError`.
+
+Two portability notes for that step:
+
+- Keep the scratch files **inside the workspace**. An absolute `/tmp` path is
+  not portable: on Windows the step's shell is Git Bash (where `/tmp` is a
+  Git-Bash-specific folder) while `python` is Windows Python (where `/tmp`
+  means `C:\tmp`). `curl` writes to one place and Python looks in another.
+- `node_bundled` / `uv_bundled` are the meaningful assertions. The runners
+  already have Node.js installed, so a plain "node is there" proves nothing.
+  They are only true when the command resolves inside the folder this install
+  actually ships (`core/aitrader/tools.py` owns that definition).
+
 **Note:** the MT5 *terminal* (the desktop app) is still not bundled. It is
 proprietary, must be installed from your broker, and must be logged into once.
 The bridge is bundled; the terminal is the user's to install.
@@ -448,7 +499,7 @@ Build rules:
 |-----|--------|--------|
 | Windows | `windows-latest` | `.exe` installer + portable |
 | macOS | `macos-latest` | `.dmg` + `.zip` |
-| Linux | `ubuntu-latest` | `.AppImage` + `.deb` |
+| Linux | `ubuntu-latest` | `.deb` + `.tar.gz` |
 | Android | `ubuntu-latest` | debug `.apk` |
 | Publish | `ubuntu-latest` | replaces the release for that tag with exactly those files |
 
