@@ -78,6 +78,25 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 
 ---
 
+## 0.1.3 — Truly plug-and-play (done)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Bundled Node.js (npx) | ✅ | `resources/node` — node.exe + npx.cmd + the full npm CLI |
+| Bundled uv (uvx) | ✅ | `resources/uv` — uv.exe **and** uvx.exe (separate binaries) |
+| Core self-discovers its tools | ✅ | `core/main.py` puts `resources/{node,uv}` on PATH at startup |
+| MetaTrader5 bundled in CI | ✅ | CI installs it on Windows and **fails the build** if it is missing |
+| Accurate UI status | ✅ | Shows "bundled with AI-TRADER" instead of "install Node.js" |
+| Clean-PATH verification | ✅ | Verified with `PATH=C:\Windows\System32;C:\Windows`: npx + uvx + MT5 all live |
+
+### Known gaps in 0.1.3
+
+- The MetaTrader 5 **terminal** is proprietary and cannot be bundled — the user
+  installs it from their broker and logs in once. The Python bridge is bundled.
+- macOS/Linux builds ship `node`/`uv` for the host arch only (arm64).
+
+---
+
 ## 0.2.0 — Reliability and packaging
 
 Priority: make the thing boring to operate.

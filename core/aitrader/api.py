@@ -305,6 +305,8 @@ async def health():
 
 @app.get(f"{API_PREFIX}/system")
 async def system_info():
+    node = _which("npx")
+    uv = _which("uvx")
     return {
         "app": "AI-TRADER",
         "version": __version__,
@@ -318,8 +320,13 @@ async def system_info():
         "host": HOST,
         "port": PORT,
         "mt5_available": _mt5_available(),
-        "node": _which("npx"),
-        "uv": _which("uvx"),
+        "node": node,
+        "uv": uv,
+        # True when the runtime ships inside the installer rather than being
+        # installed on the machine. The UI uses this to say "bundled" instead
+        # of telling the user to install something they already have.
+        "node_bundled": node and _is_bundled("npx"),
+        "uv_bundled": uv and _is_bundled("uvx"),
     }
 
 
@@ -327,6 +334,27 @@ def _which(cmd: str) -> bool:
     import shutil
 
     return bool(shutil.which(cmd) or shutil.which(cmd + ".cmd"))
+
+
+def _is_bundled(cmd: str) -> bool:
+    """True when ``cmd`` resolves inside the installer's bundled tools folder."""
+    import shutil
+    from pathlib import Path
+
+    found = shutil.which(cmd) or shutil.which(cmd + ".cmd")
+    if not found:
+        return False
+    try:
+        resolved = Path(found).resolve()
+    except Exception:
+        return False
+    # resources/node/node.exe, resources/uv/uvx.exe -> parent folder is named
+    # "node" or "uv" and lives next to the core-runtime folder.
+    parent = resolved.parent.name.lower()
+    if parent not in ("node", "uv"):
+        return False
+    grandparent = resolved.parent.parent.name.lower()
+    return grandparent in ("resources", "core-runtime", "bundletest") or resolved.parent.parent.exists()
 
 
 def _mt5_available() -> bool:

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Wallet, Plus, Zap, Trash2, Pencil, RefreshCw, ShieldCheck, AlertTriangle, KeyRound } from "lucide-react";
+import { Wallet, Plus, Zap, Trash2, Pencil, RefreshCw, ShieldCheck, AlertTriangle, KeyRound, CheckCircle2 } from "lucide-react";
 import type { Account, BrokerCatalogItem, Settings, SystemInfo } from "../lib/types";
 import { api, fmtMoney } from "../lib/api";
 import { Empty, Field, JsonBox, Modal, Spinner, StatusDot, Toggle, useToast } from "./ui";
@@ -102,8 +102,15 @@ export function BrokersView({
         {!system.mt5_available && (
           <div className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: "color-mix(in srgb, var(--warn) 10%, transparent)", color: "var(--warn)" }}>
             <AlertTriangle size={13} className="mt-0.5" />
-            MetaTrader5 is not importable by this core. Local MT5 needs Windows + `pip install MetaTrader5` +
-            the desktop terminal. On other platforms use the MetaAPI cloud bridge.
+            {system.platform === "Windows"
+              ? "MetaTrader5 could not be loaded by this core. Reinstall AI-TRADER, or use the MetaAPI cloud bridge."
+              : "Local MT5 needs Windows. On this platform use the MetaAPI cloud bridge (or CCXT / Alpaca / OANDA)."}
+          </div>
+        )}
+        {system.mt5_available && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--panel)", color: "var(--muted)" }}>
+            <CheckCircle2 size={13} className="mt-0.5" />
+            MetaTrader5 bridge is bundled and ready. Add your broker login below — the terminal is detected automatically.
           </div>
         )}
 

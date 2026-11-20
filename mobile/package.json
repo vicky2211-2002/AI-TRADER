@@ -1,7 +1,7 @@
 {
   "name": "ai-trader-mobile",
   "productName": "AI-TRADER Mobile",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Capacitor shell that wraps the AI-TRADER web UI for Android and iOS.",
   "license": "MIT",
@@ -30,4 +30,5 @@
     "typescript": "^5.7.2"
   }
 }
+
 

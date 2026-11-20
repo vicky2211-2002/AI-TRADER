@@ -89,6 +89,58 @@ def _ensure_mt5_account_setup() -> dict:
     }
 
 
+def _bundled_tool_dirs() -> list[str]:
+    """Locate the Node.js / uv folders that ship inside the installer.
+
+    Layout in a packaged install::
+
+        <install>/resources/core-runtime/aitrader-core.exe   <- we are here
+        <install>/resources/node/node.exe, npx.cmd
+        <install>/resources/uv/uv.exe, uvx.exe
+
+    The tool folders are *siblings* of ``core-runtime``, so the search walks
+    up one level as well. In a dev checkout nothing matches, so the system
+    PATH is used instead.
+    """
+    dirs: list[str] = []
+    # sys.executable is the frozen binary; its parent is core-runtime/.
+    exe_dir = Path(sys.executable).resolve().parent
+    # Dev fallback: core/main.py -> <repo>/core -> <repo>
+    dev_root = Path(__file__).resolve().parent.parent
+
+    bases = [
+        exe_dir,              # <resources>/core-runtime/node (unlikely but cheap)
+        exe_dir.parent,       # <resources>/node          <- packaged install
+        exe_dir.parent.parent,  # <install>/node          <- portable/unpacked
+        dev_root,             # <repo>/node              <- dev checkout
+    ]
+    for base in bases:
+        for name in ("node", "uv"):
+            folder = base / name
+            if folder.is_dir() and str(folder) not in dirs:
+                dirs.append(str(folder))
+    return dirs
+
+
+def _setup_bundled_tools() -> None:
+    """Put the bundled Node.js and uv on PATH so MCP servers work instantly.
+
+    Without this, a clean machine has no ``npx`` and no ``uvx`` and every MCP
+    server fails with "command not found". The installer ships both, so the
+    core wires them up itself instead of relying on the parent process.
+    """
+    folders = _bundled_tool_dirs()
+    if not folders:
+        return
+    current = os.environ.get("PATH", "")
+    parts = current.split(os.pathsep) if current else []
+    for folder in folders:
+        if folder not in parts:
+            parts.insert(0, folder)
+    os.environ["PATH"] = os.pathsep.join(parts)
+    print(f"[tools] bundled runtimes on PATH: {', '.join(folders)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="AI-TRADER local core")
     parser.add_argument("--host", default=HOST)
@@ -99,6 +151,10 @@ def main() -> None:
     host = "0.0.0.0" if args.lan else args.host
     if host != "127.0.0.1" and not os.environ.get("AI_TRADER_TOKEN"):
         print("WARNING: binding to the network without AI_TRADER_TOKEN set is unsafe.")
+
+    # Make the bundled Node.js (npx) and uv (uvx) reachable before anything
+    # tries to spawn an MCP server.
+    _setup_bundled_tools()
 
     # Windows auto-setup (non-blocking)
     if os.name == "nt":

@@ -183,19 +183,22 @@ live account.
 
 ## Zero-config install (v0.1.1+)
 
-The installers are self-contained: they ship a **frozen Python core**
-(`resources/core-runtime/aitrader-core.exe`) with FastAPI, the vault and the
-MetaTrader 5 bridge already inside. You do not install Python, pip, Node or any
-package to run the desktop app.
+The installers are **completely self-contained**. They ship a frozen Python
+core (`resources/core-runtime/aitrader-core.exe`) *and* the two runtimes that
+MCP servers need (Node.js for `npx`, uv for `uvx`). You do not install Python,
+pip, Node.js, uv or any package to run the desktop app.
 
 | Feature | Before v0.1.1 | Now |
 |---------|---------------|-----|
 | **Python runtime** | User installs Python 3.12 + `pip install -r requirements.txt` | **Bundled** — nothing to install |
+| **Node.js (`npx`)** | User installs Node 20+ | **Bundled** (`resources/node`, with the full npm CLI) |
+| **uv (`uvx`)** | User runs `pip install uv` | **Bundled** (`resources/uv/uv.exe` + `uvx.exe`) |
+| **MetaTrader5 bridge** | `pip install MetaTrader5` | **Bundled** on Windows |
 | **Core binding** | `127.0.0.1` only | **`0.0.0.0`** — LAN/mobile works instantly |
 | **Windows Firewall** | Manual `netsh` command | **Auto-attempted** on first launch; Windows may ask once |
 | **VC++ Redistributable** | User downloads manually | **Detected at startup**, prints URL if missing |
 | **MT5 Terminal** | User finds path manually | **Auto-detected** (common paths + registry) |
-| **Asset names** | Could differ from the tag | **Stamped from the tag** — `AI-TRADER-0.1.1-x64.exe` |
+| **Asset names** | Could differ from the tag | **Stamped from the tag** — `AI-TRADER-0.1.4-x64.exe` |
 
 **End user experience (Windows):**
 1. Download `AI-TRADER-<version>-x64.exe` → run it.
@@ -203,6 +206,12 @@ package to run the desktop app.
 3. The app opens; its own core is already running on port 8765.
 4. **Models** → paste a key → **Test**.
 5. **Brokers** → MT5 path is pre-filled → login/password/server → **Test**.
+6. **MCP servers** → every server is already runnable (no Node.js/uv install).
+
+The only thing still external is the **MetaTrader 5 terminal** itself — it is a
+proprietary Windows application that must be installed from your broker and
+logged into once. If you do not use MT5, the Paper broker and the MetaAPI
+cloud bridge work with no terminal at all.
 
 **Android:** install the APK, then type your PC's LAN address
 (`http://192.168.x.x:8765`) in the Core URL field. The phone cannot discover the

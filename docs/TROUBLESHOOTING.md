@@ -49,6 +49,9 @@ Kill it or start with `--port 8766` and change the URL in Settings.
 - **Bundled core:** the installer ships `resources\core-runtime\aitrader-core.exe`.
   If it is missing, Electron falls back to a system Python and the app behaves
   like a dev checkout.
+- **Bundled MCP runtimes:** `resources\node\node.exe` + `npx.cmd` and
+  `resources\uv\uv.exe` + `uvx.exe`. The core puts both folders on `PATH` at
+  startup, so every MCP server works without installing Node.js or uv.
 - **Antivirus:** unsigned PyInstaller binaries are sometimes quarantined. Allow
   the install folder, then restart the app.
 - **SmartScreen** ("Windows protected your PC"): *More info → Run anyway*. The
@@ -56,12 +59,25 @@ Kill it or start with `--port 8766` and change the URL in Settings.
 - **Python not found** only matters for dev builds: install Python 3.12 or set
   `AI_TRADER_PYTHON` to the full `python.exe` path, then restart the app.
 - **Packaged app:** confirm `resources\core-runtime\aitrader-core.exe` exists
-  next to `resources\core`.
+  next to `resources\core`, `resources\node` and `resources\uv`.
 - **Firewall dialog:** Windows will prompt once — click "Allow access" for Private networks.
 - **VC++ Redistributable missing:** Core prints download URL at startup:
   `https://aka.ms/vs/17/release/vc_redist.x64.exe`
 - **MT5 terminal not found:** Core prints warning; install MT5, log in once, enable
-  **Tools → Options → Expert Advisors → Allow algorithmic trading**.
+  **Tools → Options → Expert Advisors → Allow algorithmic trading**. The Python
+  bridge itself is bundled — only the terminal is external.
+- **"MetaTrader5 is not importable":** the build shipped without the bridge.
+  Re-download the installer; a build without it fails CI on purpose.
+
+### MCP servers
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `npx` not found | `resources\node` missing from the install | Reinstall; the folder must contain `node.exe`, `npx.cmd` **and** `node_modules\npm\` |
+| `Cannot find module '../lib/cli.js'` | `npx.cmd` was copied without the npm package | Reinstall — the full `node_modules\npm` tree is required |
+| `uvx` not found | `resources\uv` missing `uvx.exe` (it is a separate binary from `uv.exe`) | Reinstall; both `uv.exe` and `uvx.exe` must be present |
+| `MCP process exited` immediately | The runtime is on PATH but its CLI tree is missing | Check `resources\node\node_modules\npm\lib` exists |
+| Server needs an API key | Firecrawl / Tavily / Alpaca require their own account | Add the key in the server's **Edit** dialog |
 
 ### Browser-specific
 

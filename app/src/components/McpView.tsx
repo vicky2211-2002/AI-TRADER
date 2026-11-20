@@ -13,6 +13,7 @@ import {
   Terminal,
   Globe,
   AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import type { McpCatalogItem, McpServer, McpTool } from "../lib/types";
 import { api } from "../lib/api";
@@ -41,7 +42,7 @@ export function McpView({
   servers: McpServer[];
   catalog: McpCatalogItem[];
   refresh: () => Promise<void>;
-  system: { node: boolean; uv: boolean };
+  system: { node: boolean; uv: boolean; node_bundled?: boolean; uv_bundled?: boolean };
 }) {
   const { push } = useToast();
   const [tab, setTab] = useState<"installed" | "catalog">("installed");
@@ -140,13 +141,25 @@ export function McpView({
         {!system.node && (
           <div className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: "color-mix(in srgb, var(--warn) 10%, transparent)", color: "var(--warn)" }}>
             <AlertTriangle size={13} className="mt-0.5" />
-            Node.js (`npx`) was not found on PATH. Most MCP servers need it. Install Node 20+ and restart the core.
+            Node.js (`npx`) was not found. MCP servers need it — install Node 20+ and restart the app.
+          </div>
+        )}
+        {system.node && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--panel)", color: "var(--muted)" }}>
+            <CheckCircle2 size={13} className="mt-0.5" />
+            {system.node_bundled ? "Node.js is bundled with AI-TRADER" : "Node.js detected on your system"} — `npx` MCP servers are ready.
           </div>
         )}
         {!system.uv && (
           <div className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--panel)", color: "var(--muted)" }}>
             <AlertTriangle size={13} className="mt-0.5" />
             `uvx` was not found. uv-based servers (Fetch, Time, Git, Alpaca) need `pip install uv`.
+          </div>
+        )}
+        {system.uv && (
+          <div className="mb-3 flex items-start gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: "var(--panel)", color: "var(--muted)" }}>
+            <CheckCircle2 size={13} className="mt-0.5" />
+            {system.uv_bundled ? "uv is bundled with AI-TRADER" : "uv detected on your system"} — `uvx` MCP servers are ready.
           </div>
         )}
 

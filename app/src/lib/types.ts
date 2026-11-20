@@ -144,6 +144,8 @@ export interface SystemInfo {
   mt5_available: boolean;
   node: boolean;
   uv: boolean;
+  node_bundled?: boolean;
+  uv_bundled?: boolean;
 }
 
 export interface Bootstrap {

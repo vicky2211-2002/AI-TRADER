@@ -327,6 +327,66 @@ sqlite, the seed JSON, and — on Windows only — the `MetaTrader5` bridge. Siz
 Windows is roughly 100 MB unpacked, which is why the installer grew. `ccxt` is
 **not** bundled (≈150 MB extra); set `AI_TRADER_BUNDLE_CCXT=1` if you want it.
 
+### The MCP runtimes (Node.js + uv)
+
+MCP servers are separate programs launched by the core:
+
+| Server kind | Command | Runtime needed |
+|-------------|---------|----------------|
+| Context7, Playwright, Firecrawl, Tavily, … | `npx` | **Node.js 20+** |
+| Fetch, Time, Git, Alpaca, … | `uvx` | **uv** (the Rust Python toolchain) |
+
+Rather than make the user install them, CI downloads both and ships them:
+
+```
+app/node/node.exe  +  app/node/npx.cmd  +  app/node/node_modules/npm/…
+app/uv/uv.exe      +  app/uv/uvx.exe
+                    →  <install dir>/resources/{node,uv}/
+```
+
+**`npx.cmd` needs the full npm package.** It resolves
+`%~dp0\node_modules\npm\bin\npx-cli.js`, and that script in turn requires
+`npm\lib\`. Copying only `npx.cmd` produces a `Cannot find module '../lib/cli.js'`
+crash the first time an MCP server starts. The CI step copies the whole
+`node_modules/npm` tree.
+
+**`uvx` is a separate binary from `uv`.** The catalog invokes `uvx`, so copying
+only `uv.exe` leaves every uv-based server broken.
+
+At startup the core calls `_setup_bundled_tools()` (`core/main.py`), which puts
+`resources/node` and `resources/uv` on `PATH` itself. Electron also injects
+them, but the core does not depend on that — it finds the folders relative to
+`sys.executable` and works even if it is launched by hand.
+
+### MetaTrader5 in the frozen core
+
+`MetaTrader5` is a Windows-only native package (a `.pyd`). It must be
+installed **in the build environment** or PyInstaller silently drops it and the
+Brokers tab says "MetaTrader5 is not importable":
+
+```yaml
+- name: Install core dependencies
+  run: |
+    python -m pip install -r core/requirements.txt pyinstaller
+    if [ "${{ runner.os }}" = "Windows" ]; then
+      python -m pip install "MetaTrader5>=5.0.45"
+    fi
+
+- name: Build frozen core sidecar
+  run: |
+    python core/build_sidecar.py --clean
+    # Fail loudly instead of shipping a broker-less build.
+    ls app/core-runtime/_internal/ | grep -qi MetaTrader5 || exit 1
+```
+
+The `MetaTrader5` line is commented out in `core/requirements.txt` on purpose —
+it has no macOS/Linux build and would break the other two jobs. The Windows job
+installs it explicitly and the build fails if it is missing.
+
+**Note:** the MT5 *terminal* (the desktop app) is still not bundled. It is
+proprietary, must be installed from your broker, and must be logged into once.
+The bridge is bundled; the terminal is the user's to install.
+
 Build rules:
 
 - PyInstaller cannot cross-compile. Build the sidecar on each OS you ship to;
