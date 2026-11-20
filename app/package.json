@@ -9,6 +9,11 @@
     "email": "maintainer@ai-trader.app"
   },
   "license": "MIT",
+  "homepage": "https://github.com/vicky2211-2002/AI-TRADER",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vicky2211-2002/AI-TRADER.git"
+  },
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -111,7 +116,8 @@
     "linux": {
       "target": ["deb", "tar.gz"],
       "icon": "build/icon.png",
-      "category": "Finance"
+      "category": "Finance",
+      "artifactName": "AI-TRADER-${version}-${arch}.${ext}"
     }
   }
 }

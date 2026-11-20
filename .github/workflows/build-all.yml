@@ -279,10 +279,31 @@ jobs:
           echo "packaged uv:   $UV_DIR"
           ls -la "$NODE_DIR" "$UV_DIR" || true
 
+          # Windows ships .exe/.cmd, Unix ships extensionless binaries.
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            NODE_EXE="$NODE_DIR/node.exe"
+            NPX_EXE="$NODE_DIR/npx.cmd"
+            UV_EXE="$UV_DIR/uv.exe"
+            UVX_EXE="$UV_DIR/uvx.exe"
+          else
+            NODE_EXE="$NODE_DIR/node"
+            NPX_EXE="$NODE_DIR/npx"
+            UV_EXE="$UV_DIR/uv"
+            UVX_EXE="$UV_DIR/uvx"
+          fi
+
           failed=0
-          for exe in "$NODE_DIR/node" "$NODE_DIR/npx" "$UV_DIR/uv" "$UV_DIR/uvx"; do
-            if [ ! -x "$exe" ]; then
-              echo "::error title=mcp-runtimes::not executable after packaging: $exe"
+          for exe in "$NODE_EXE" "$NPX_EXE" "$UV_EXE" "$UVX_EXE"; do
+            if [ ! -f "$exe" ]; then
+              echo "::error title=mcp-runtimes::missing after packaging: $exe"
+              failed=1
+            fi
+          done
+          # The npm CLI tree is what makes npx work; a bare npx.cmd is useless.
+          for f in "$NODE_DIR/node_modules/npm/bin/npx-cli.js" \
+                   "$NODE_DIR/node_modules/npm/lib/cli.js"; do
+            if [ ! -f "$f" ]; then
+              echo "::error title=mcp-runtimes::npm CLI missing after packaging: $f"
               failed=1
             fi
           done
@@ -290,10 +311,28 @@ jobs:
             exit 1
           fi
 
-          "$NODE_DIR/node" --version
-          "$NODE_DIR/npx" --version
-          "$UV_DIR/uv" --version
-          "$UV_DIR/uvx" --version
+          if [ "${{ runner.os }}" != "Windows" ]; then
+            # A lost executable bit turns "npx" into a permission error.
+            for exe in "$NODE_EXE" "$NPX_EXE" "$UV_EXE" "$UVX_EXE"; do
+              if [ ! -x "$exe" ]; then
+                echo "::error title=mcp-runtimes::not executable after packaging: $exe"
+                failed=1
+              fi
+            done
+            if [ "$failed" -ne 0 ]; then
+              exit 1
+            fi
+          fi
+
+          "$NODE_EXE" --version
+          "$UV_EXE" --version
+          "$UVX_EXE" --version
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # npx.cmd is a cmd.exe script; run it the way Windows will.
+            ( cd "$NODE_DIR" && cmd.exe //c npx.cmd --version )
+          else
+            "$NPX_EXE" --version
+          fi
           echo "::notice title=mcp-runtimes::Packaged Node.js and uv both execute"
 
       - name: Collect installers
