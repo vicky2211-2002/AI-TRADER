@@ -116,73 +116,65 @@ jobs:
           fi
 
       # Bundle Node.js (includes npx) for MCP servers — no system Node.js needed.
+      # The npm CLI must travel with node.exe: npx.cmd resolves
+      # %~dp0\node_modules\npm\bin\npx-cli.js and that script needs npm\lib\.
       - name: Download bundled Node.js
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p app/node
-          echo "Runner OS: ${{ runner.os }}"
+          mkdir -p app/node/node_modules
+          NODE_VERSION="v20.18.1"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            # Node.js 20 LTS Windows x64 binary (node.exe + npx.cmd + npm CLI)
-            # npx.cmd resolves %~dp0\node_modules\npm\bin\npx-cli.js and that
-            # script requires the whole npm\lib tree, so the complete npm
-            # package travels with node.exe or npx exits immediately.
-            curl -fsSL "https://nodejs.org/dist/v20.18.1/node-v20.18.1-win-x64.zip" -o /tmp/node.zip
-            unzip -q /tmp/node.zip -d /tmp/node
-            mkdir -p app/node/node_modules
-            cp /tmp/node/node-v20.18.1-win-x64/node.exe app/node/
-            cp /tmp/node/node-v20.18.1-win-x64/npx.cmd app/node/
-            cp -r /tmp/node/node-v20.18.1-win-x64/node_modules/npm app/node/node_modules/
-          elif [ "${{ runner.os }}" = "Linux" ]; then
-            curl -fsSL "https://nodejs.org/dist/v20.18.1/node-v20.18.1-linux-x64.tar.xz" -o /tmp/node.tar.xz
-            tar -xf /tmp/node.tar.xz -C /tmp
-            # Archive extracts to node-v20.18.1-linux-x64/
-            mkdir -p app/node/node_modules
-            find /tmp -name "node" -type f -path "*/bin/node" | head -1 | xargs -I{} cp {} app/node/
-            find /tmp -name "npx" -type f -path "*/bin/npx" | head -1 | xargs -I{} cp {} app/node/
-            NPM_DIR="$(dirname "$(find /tmp -type d -path '*/lib/node_modules/npm' | head -1)")"
-            if [ -n "$NPM_DIR" ]; then cp -r "$NPM_DIR/npm" app/node/node_modules/; fi
-            chmod +x app/node/node app/node/npx
+            ARCHIVE="node-${NODE_VERSION}-win-x64"
+            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}.zip" -o /tmp/node.zip
+            unzip -q /tmp/node.zip -d /tmp
+            cp "/tmp/${ARCHIVE}/node.exe" app/node/
+            cp "/tmp/${ARCHIVE}/npx.cmd" app/node/
+            cp -r "/tmp/${ARCHIVE}/node_modules/npm" app/node/node_modules/
           else
-            # macOS - arm64
-            curl -fsSL "https://nodejs.org/dist/v20.18.1/node-v20.18.1-darwin-arm64.tar.xz" -o /tmp/node.tar.xz
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              ARCHIVE="node-${NODE_VERSION}-linux-x64"
+            else
+              ARCHIVE="node-${NODE_VERSION}-darwin-arm64"
+            fi
+            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}.tar.xz" -o /tmp/node.tar.xz
             tar -xf /tmp/node.tar.xz -C /tmp
-            mkdir -p app/node/node_modules
-            find /tmp -name "node" -type f -path "*/bin/node" | head -1 | xargs -I{} cp {} app/node/
-            find /tmp -name "npx" -type f -path "*/bin/npx" | head -1 | xargs -I{} cp {} app/node/
-            NPM_DIR="$(dirname "$(find /tmp -type d -path '*/lib/node_modules/npm' | head -1)")"
-            if [ -n "$NPM_DIR" ]; then cp -r "$NPM_DIR/npm" app/node/node_modules/; fi
+            cp "/tmp/${ARCHIVE}/bin/node" app/node/
+            cp "/tmp/${ARCHIVE}/bin/npx" app/node/
+            cp -r "/tmp/${ARCHIVE}/lib/node_modules/npm" app/node/node_modules/
             chmod +x app/node/node app/node/npx
           fi
-          echo "Node.js bundled: $(ls -la app/node/)"
+          echo "Node.js bundled:"; ls -la app/node/
+          test -f app/node/node_modules/npm/bin/npx-cli.js || { echo "::error title=node::npm CLI missing"; exit 1; }
+          test -f app/node/node_modules/npm/lib/cli.js || { echo "::error title=node::npm lib missing"; exit 1; }
 
       # Bundle uv for MCP servers — no system uv needed.
+      # Both uv AND uvx are needed: the MCP catalog invokes "uvx", which is a
+      # separate binary from "uv".
       - name: Download bundled uv
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p app/uv
-          echo "Runner OS: ${{ runner.os }}"
           if [ "${{ runner.os }}" = "Windows" ]; then
             curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.4.30/uv-x86_64-pc-windows-msvc.zip" -o /tmp/uv.zip
-            unzip -q /tmp/uv.zip -d /tmp/uv
+            unzip -q /tmp/uv.zip -d /tmp
             cp /tmp/uv/uv.exe app/uv/
             cp /tmp/uv/uvx.exe app/uv/
-          elif [ "${{ runner.os }}" = "Linux" ]; then
-            curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.4.30/uv-x86_64-unknown-linux-gnu.tar.gz" -o /tmp/uv.tar.gz
-            tar -xzf /tmp/uv.tar.gz -C /tmp/uv
-            find /tmp/uv -name "uv" -type f | head -1 | xargs -I{} cp {} app/uv/
-            find /tmp/uv -name "uvx" -type f | head -1 | xargs -I{} cp {} app/uv/
-            chmod +x app/uv/uv app/uv/uvx
           else
-            # macOS - arm64
-            curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.4.30/uv-aarch64-apple-darwin.tar.gz" -o /tmp/uv.tar.gz
+            if [ "${{ runner.os }}" = "Linux" ]; then
+              UV_ARCHIVE="uv-x86_64-unknown-linux-gnu"
+            else
+              UV_ARCHIVE="uv-aarch64-apple-darwin"
+            fi
+            curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.4.30/${UV_ARCHIVE}.tar.gz" -o /tmp/uv.tar.gz
             tar -xzf /tmp/uv.tar.gz -C /tmp/uv
-            find /tmp/uv -name "uv" -type f | head -1 | xargs -I{} cp {} app/uv/
-            find /tmp/uv -name "uvx" -type f | head -1 | xargs -I{} cp {} app/uv/
+            cp "/tmp/uv/${UV_ARCHIVE}/uv" app/uv/
+            cp "/tmp/uv/${UV_ARCHIVE}/uvx" app/uv/
             chmod +x app/uv/uv app/uv/uvx
           fi
-          echo "uv bundled: $(ls -la app/uv/)"
+          echo "uv bundled:"; ls -la app/uv/
+          test -f app/uv/uvx.exe -o -f app/uv/uvx || { echo "::error title=uv::uvx missing"; exit 1; }
 
       - name: Build UI + Electron main
         shell: bash
