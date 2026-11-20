@@ -78,7 +78,8 @@ npx cap open android
 
 ## Point the app at your core
 
-1. Start the core on the PC (bind to the LAN):
+1. Start the desktop app on the PC. Its bundled core already binds `0.0.0.0:8765`.
+   For a bare dev core:
 
    ```powershell
    cd core
@@ -89,14 +90,17 @@ npx cap open android
 
 2. Find the PC's LAN IP: `ipconfig` → IPv4 address, e.g. `192.168.1.42`.
 3. Allow inbound TCP 8765 in Windows Firewall (Private network only).
-4. Open the app. If it cannot reach `127.0.0.1`, the **Core offline** screen asks
-   for a URL — enter `http://192.168.1.42:8765` and the token from Settings.
+4. Open the app. The **Core offline** screen asks for a URL — enter
+   `http://192.168.1.42:8765` and the token from Settings.
+
+`127.0.0.1` on the phone means *the phone*, so it can never reach the PC.
 
 The URL and token are stored in the WebView's `localStorage` on the device.
 
-> Android 9+ blocks cleartext HTTP by default. Debug builds allow it only if you
-> enable it. For production use HTTPS (tunnel) or add a network-security config
-> that permits only your LAN subnet. See the build guide.
+> Android 9+ blocks cleartext HTTP by default. `mobile/capacitor.config.ts` sets
+> `android.allowMixedContent: true`, and the CI build injects a permissive
+> network-security config so the LAN call works. For anything beyond a trusted
+> home network, use an HTTPS tunnel instead.
 
 ---
 
@@ -170,6 +174,6 @@ is a remote control, never the thing that holds the broker password.
 | Blank screen after install | Re-run `npx cap sync android`; confirm `../app/dist/index.html` exists |
 | `webDir` not found | `cd ../app && npm run build:web` first |
 | `SDK location not found` | Set `ANDROID_HOME`, or create `android/local.properties` with `sdk.dir=C\:\\Users\\you\\AppData\\Local\\Android\\Sdk` |
-| Core offline on Wi-Fi | Firewall rule, same subnet, `AI_TRADER_HOST=0.0.0.0`, correct IP |
-| `CLEARTEXT communication not permitted` | Use HTTPS tunnel or add a debug network-security config |
+| Core offline on Wi-Fi | Same subnet, desktop app open, firewall allows 8765, correct LAN IP (not `127.0.0.1`) |
+| `CLEARTEXT communication not permitted` | Rebuild through CI (it injects the config), or add a network-security config manually |
 | Gradle out of memory | Add `org.gradle.jvmargs=-Xmx4g` to `android/gradle.properties` |

@@ -7,7 +7,7 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 
 ---
 
-## 0.1.0 — Foundation (current)
+## 0.1.0 — Foundation (done)
 
 | Area | Status | Notes |
 |------|--------|-------|
@@ -25,12 +25,11 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 | Electron shell (Windows/macOS/Linux) | ✅ | Spawns and supervises the core |
 | Capacitor shell (Android/iOS) | ✅ | UI only; core stays on the host |
 | Documentation set | ✅ | 11 docs + README + architecture |
-| Offline tests | ✅ | 6 tests: vault, MCP, skills, paper lifecycle, risk |
+| Offline tests | ✅ | 14 tests: vault, MCP, skills, paper lifecycle, risk, autopilot |
 | Type-check + production build | ✅ | `tsc --noEmit`, `vite build` |
 
 ### Known gaps in 0.1.0
 
-- Packaged desktop app requires a system Python (no bundled runtime).
 - Paper fills ignore spread/slippage/commission.
 - `close()` missing for MetaAPI, CCXT, OANDA, webhook.
 - `max_spread_points` is not enforced by every adapter.
@@ -38,6 +37,27 @@ Status legend: ✅ done · 🟡 in progress · ⬜ planned · ❌ intentionally 
 - No encrypted chat history.
 - No screenshot/icon assets in the repo.
 - Market data is unofficial (Yahoo), with MT5 fallback.
+
+---
+
+## 0.1.1 — Installable anywhere (done)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Frozen Python core in every desktop installer | ✅ | `core/build_sidecar.py` → `resources/core-runtime`; no system Python |
+| Version stamped from the git tag | ✅ | `AI-TRADER-<tag>-x64.exe`, never a stale 0.1.0 name |
+| Release replaced, not appended | ✅ | CI deletes the old release for the tag before uploading |
+| Release notes generated from real files | ✅ | Missing platforms are named, not advertised |
+| Android debug APK | ✅ | Pre-installed runner SDK + cleartext LAN config |
+| 27 skills (16 + trader-skill pack) | ✅ | MIT attribution kept |
+| Installer-level verification | ✅ | Frozen core health/model/broker checks run against the packaged app |
+
+### Known gaps in 0.1.1
+
+- Installers are unsigned (SmartScreen / Gatekeeper warnings).
+- Android discovers nothing automatically: the user types the PC's LAN IP.
+- iOS is not built (needs the Apple Developer Program and a Mac).
+- `ccxt` is not bundled; install it only if you need a crypto exchange adapter.
 
 ---
 
@@ -56,11 +76,14 @@ Priority: make the thing boring to operate.
 | ⬜ Encrypt chat DB at rest (SQLCipher or field-level) | Chat can contain sensitive context |
 | ⬜ Health panel: provider latency, MCP uptime, last quote age | One glance, no guessing |
 | ⬜ Backup/restore button | Portable, verifiable state |
-| ⬜ CI matrix (Windows/macOS/Linux) + signed builds | Reproducible releases |
+| ✅ CI matrix (Windows/macOS/Linux/Android) | Reproducible releases |
+| ✅ Bundled core runtime (no system Python) | Zero-config install |
+| ⬜ Signed builds (Windows cert + Apple notarisation) | Remove SmartScreen/Gatekeeper warnings |
 | ⬜ Icon set and screenshots | Distribution polish |
 
 Acceptance: a clean Windows VM with no Python installs and runs the app, connects
-a paper account, and passes the smoke test.
+a paper account, and passes the smoke test. **Met on Windows in the 0.1.1 build**
+(frozen core health/model/broker checks), except for the code-signing polish.
 
 ---
 

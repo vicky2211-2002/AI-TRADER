@@ -46,10 +46,17 @@ Kill it or start with `--port 8766` and change the URL in Settings.
 ### Desktop-specific
 
 - **Log:** `%APPDATA%\AI-TRADER\logs\core.log` (Electron's `userData` folder).
-- **Python not found:** install Python 3.12 or set `AI_TRADER_PYTHON` to the full
-  `python.exe` path, then restart the app.
-- **Packaged app:** confirm `resources\core\main.py` exists next to the executable.
-- **Antivirus may block `py.exe` spawning;** allow the app's folder.
+- **Bundled core:** the installer ships `resources\core-runtime\aitrader-core.exe`.
+  If it is missing, Electron falls back to a system Python and the app behaves
+  like a dev checkout.
+- **Antivirus:** unsigned PyInstaller binaries are sometimes quarantined. Allow
+  the install folder, then restart the app.
+- **SmartScreen** ("Windows protected your PC"): *More info → Run anyway*. The
+  builds are unsigned; signing needs a code-signing certificate.
+- **Python not found** only matters for dev builds: install Python 3.12 or set
+  `AI_TRADER_PYTHON` to the full `python.exe` path, then restart the app.
+- **Packaged app:** confirm `resources\core-runtime\aitrader-core.exe` exists
+  next to `resources\core`.
 - **Firewall dialog:** Windows will prompt once — click "Allow access" for Private networks.
 - **VC++ Redistributable missing:** Core prints download URL at startup:
   `https://aka.ms/vs/17/release/vc_redist.x64.exe`
@@ -299,25 +306,25 @@ Frontmatter must start on line 1 with `---`.
 
 ---
 
-## 9. Mobile (v0.1.1+ auto-discovery)
+## 9. Mobile (Android)
 
 | Symptom | Fix |
 |---------|-----|
-| `Core offline` on Wi-Fi | App auto-fills Core URL from PC LAN IP. If empty, use PC LAN IP manually. |
-| `CLEARTEXT not permitted` | HTTPS tunnel (Tailscale/ngrok), or a scoped network-security config |
-| Blank after install | `cd app && npm run build:web`, then `npx cap sync android` |
+| `Core offline` on Wi-Fi | Type the PC's LAN address in Settings → Core URL: `http://192.168.x.x:8765`. `127.0.0.1` means *the phone itself* and will never work. |
+| `CLEARTEXT not permitted` | CI-built APKs already allow LAN cleartext. For local builds, see [BUILD_CROSS_PLATFORM](BUILD_CROSS_PLATFORM.md#cleartext-http-on-android). |
+| Blank after install | `cd app && npm run build:web`, then `npx cap sync android`, rebuild |
 | `webDir` not found | Build the UI first |
 | Gradle SDK error | Set `ANDROID_HOME` or `android/local.properties` |
 | App can't start MCP servers | Expected: `npx`/`uvx` run on the core host |
 | Token rejected | Paste the exact `AI_TRADER_TOKEN`; restart the core after changing it |
 
-**Auto-discovery flow (v0.1.1+):**
-1. Core starts on `0.0.0.0:8765`
-2. Electron detects LAN IP → passes to Android app via `core:lan-info` IPC
-3. Android app Settings → Core URL is **pre-filled** with `http://<PC-IP>:8765`
-4. User taps Connect → works instantly
+**Setup flow:**
+1. Desktop app running on the PC (core listens on `0.0.0.0:8765`).
+2. Firewall: allow port 8765 for the private network.
+3. Phone and PC on the same Wi-Fi.
+4. Phone → Settings → Core URL → `http://<PC-IP>:8765` → Connect.
 
-If auto-fill fails, find PC IP:
+Find the PC IP:
 ```powershell
 ipconfig | findstr /R "IPv4.*192.168\|IPv4.*10\.\|IPv4.*172\."
 ```
@@ -342,7 +349,7 @@ Copy both files. Keep `vault.key` separate from the DB backup.
 ### Reset everything
 
 ```powershell
-Stop-Process -Name python -ErrorAction SilentlyContinue   # be careful: kills all Python
+Stop-Process -Name python,aitrader-core,AI-TRADER -ErrorAction SilentlyContinue
 Remove-Item "$env:APPDATA\AI-TRADER" -Recurse -Force
 ```
 

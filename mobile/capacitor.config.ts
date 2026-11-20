@@ -16,7 +16,10 @@ const config: CapacitorConfig = {
   webDir: "../app/dist",
   android: {
     backgroundColor: "#faf9f5",
-    allowMixedContent: false,
+    // The core speaks plain HTTP on the LAN (http://192.168.x.x:8765), while the
+    // WebView runs on https://localhost. Without this, every API call is blocked
+    // as mixed content and the mobile app shows "Core offline".
+    allowMixedContent: true,
   },
   ios: {
     contentInset: "always",

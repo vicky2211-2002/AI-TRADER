@@ -9,27 +9,34 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  # Matrix build for desktop platforms
+  # ---------------------------------------------------------------------------
+  # Desktop: Windows, macOS, Linux
+  # ---------------------------------------------------------------------------
   build-desktop:
-    name: ${{ matrix.os }} (${{ matrix.target }})
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - name: Windows
+            os: windows-latest
             target: win
-            artifacts: 'app/release/*.exe'
-            asset_name: windows
-          - os: macos-latest
+            artifact: windows
+          - name: macOS
+            os: macos-latest
             target: mac
-            artifacts: 'app/release/*.dmg,app/release/*.zip'
-            asset_name: macos
-          - os: ubuntu-latest
+            artifact: macos
+          - name: Linux
+            os: ubuntu-latest
             target: linux
-            artifacts: 'app/release/*.AppImage,app/release/*.deb'
-            asset_name: linux
+            artifact: linux
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,45 +53,106 @@ jobs:
           cache: 'npm'
           cache-dependency-path: app/package-lock.json
 
-      - name: Install system dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Install Linux packaging tools
+        if: runner.os == 'Linux'
+        shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev fuse
+          sudo apt-get install -y libarchive-tools rpm
 
-      - name: Install Python dependencies
-        run: |
-          cd core
-          pip install -r requirements.txt
-
-      - name: Install Node dependencies
+      - name: Install app dependencies
+        shell: bash
         run: |
           cd app
           npm ci
 
-      - name: Build Electron app
+      # The tag is the single source of truth for the version. Without this the
+      # binaries kept the old package.json version and a v0.1.1 release shipped
+      # files literally named "AI-TRADER-0.1.0-x64.exe".
+      - name: Stamp version from the release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            echo "Not a tag build; keeping package.json version."
+            exit 0
+          fi
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Building version ${VERSION}"
+          ( cd app && npm version "${VERSION}" --no-git-tag-version --allow-same-version )
+          ( cd mobile && npm version "${VERSION}" --no-git-tag-version --allow-same-version )
+          sed -i.bak -E "s/^__version__ = \".*\"/__version__ = \"${VERSION}\"/" core/aitrader/__init__.py
+          sed -i.bak -E "s/^APP_VERSION = \".*\"/APP_VERSION = \"${VERSION}\"/" core/aitrader/config.py
+          grep -n "__version__" core/aitrader/__init__.py
+          grep -n "APP_VERSION" core/aitrader/config.py
+
+      - name: Install core dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r core/requirements.txt pyinstaller
+
+      # Ships a real Python runtime inside the installer so end users never
+      # install Python or run pip.
+      - name: Build frozen core sidecar
+        shell: bash
+        run: |
+          python core/build_sidecar.py --clean
+
+      - name: Build UI + Electron main
+        shell: bash
         run: |
           cd app
           npm run build
 
-      - name: Build distributable
-        run: |
-          cd app
-          npm run dist:${{ matrix.target }}
+      - name: Package installer
+        shell: bash
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          set -o pipefail
+          cd app
+          npx electron-builder --${{ matrix.target }} --publish never 2>&1 | tee ../electron-builder.log
 
-      - name: Upload artifacts
+      - name: Collect installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          shopt -s nullglob
+          for f in app/release/*.exe app/release/*.dmg app/release/*.zip \
+                   app/release/*.AppImage app/release/*.deb; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.blockmap) continue ;;
+            esac
+            cp "$f" out/
+          done
+          echo "--- produced ---"
+          ls -lh out || true
+          if [ -z "$(ls -A out 2>/dev/null || true)" ]; then
+            echo "::error::electron-builder produced no installers for ${{ matrix.name }}"
+            echo "--- last 100 log lines ---"
+            tail -100 electron-builder.log || true
+            exit 1
+          fi
+
+      - name: Upload installers
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.asset_name }}
-          path: ${{ matrix.artifacts }}
+          name: ${{ matrix.artifact }}
+          path: out/*
+          if-no-files-found: warn
           retention-days: 30
 
-  # Android build (separate - needs Android SDK)
+  # ---------------------------------------------------------------------------
+  # Android (debug APK, connects to a core running on the user's PC)
+  # ---------------------------------------------------------------------------
   build-android:
-    name: Android (Debug APK)
+    name: Android (debug APK)
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,174 +170,215 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-34
-            build-tools;34.0.0
-            platform-tools
-            cmdline-tools;latest
-
-      - name: Install Node dependencies (app)
+      # Runners already ship an Android SDK; installing the three packages we
+      # need through sdkmanager is far more reliable than action inputs.
+      - name: Ensure Android SDK packages
+        shell: bash
         run: |
-          cd app
-          npm ci
+          set -euo pipefail
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          SDKMANAGER="$(ls "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | head -n1 || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found under $ANDROID_HOME"
+            ls -la "$ANDROID_HOME" || true
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
 
       - name: Build web bundle
+        shell: bash
         run: |
           cd app
+          npm ci
           npm run build:web
 
-      - name: Install Capacitor CLI
+      - name: Prepare Capacitor Android project
+        shell: bash
         run: |
-          npm install -g @capacitor/cli
-
-      - name: Setup Capacitor mobile (install deps)
-        run: |
+          set -euo pipefail
           cd mobile
-          npm ci
-
-      - name: Add Android platform
-        run: |
-          cd mobile
-          npx cap add android
-
-      - name: Sync Capacitor Android
-        run: |
-          cd mobile
+          npm install --no-audit --no-fund
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
           npx cap sync android
 
-      - name: Fix Gradle wrapper permissions
+      - name: Allow LAN cleartext to the core
+        shell: bash
         run: |
-          chmod +x mobile/android/gradlew
+          # The phone talks to the user's own PC over plain HTTP on the LAN.
+          # Android 9+ blocks that by default, which showed up as "Core offline".
+          python - <<'PY'
+          from pathlib import Path
+          manifest = Path("mobile/android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text(encoding="utf-8")
+          xml = Path("mobile/android/app/src/main/res/xml/network_security_config.xml")
+          xml.parent.mkdir(parents=True, exist_ok=True)
+          xml.write_text(
+              '<?xml version="1.0" encoding="utf-8"?>\n'
+              '<network-security-config>\n'
+              '  <base-config cleartextTrafficPermitted="true" />\n'
+              '</network-security-config>\n',
+              encoding="utf-8",
+          )
+          if "networkSecurityConfig" not in text:
+              text = text.replace(
+                  "<application",
+                  '<application android:networkSecurityConfig="@xml/network_security_config"',
+                  1,
+              )
+          if "usesCleartextTraffic" not in text:
+              text = text.replace(
+                  "<application",
+                  '<application android:usesCleartextTraffic="true"',
+                  1,
+              )
+          manifest.write_text(text, encoding="utf-8")
+          print(text[:400])
+          PY
 
-      - name: Build Debug APK
+      - name: Build debug APK
+        shell: bash
         run: |
+          set -euo pipefail
           cd mobile/android
-          ./gradlew assembleDebug --no-daemon
+          chmod +x gradlew
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload Android APK
+      - name: Collect APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          VERSION="${GITHUB_REF_NAME#v}"
+          APK="mobile/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK" || { echo "::error::APK not produced"; exit 1; }
+          cp "$APK" "out/AI-TRADER-${VERSION}-android-debug.apk"
+          ls -lh out
+
+      - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: android
-          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          path: out/*
+          if-no-files-found: warn
           retention-days: 30
 
-  # Create Release (runs after all builds complete)
+  # ---------------------------------------------------------------------------
+  # Release: publish exactly the binaries this run built
+  # ---------------------------------------------------------------------------
   release:
-    name: Create GitHub Release
+    name: Publish release
     runs-on: ubuntu-latest
     needs: [build-desktop, build-android]
-    if: always()
+    if: always() && startsWith(github.ref, 'refs/tags/v')
+
     steps:
-      - name: Download Windows artifacts
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: windows
-          path: dist/windows
+          path: dist
         continue-on-error: true
 
-      - name: Download macOS artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: macos
-          path: dist/macos
-        continue-on-error: true
-
-      - name: Download Linux artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: linux
-          path: dist/linux
-        continue-on-error: true
-
-      - name: Download Android APK
-        uses: actions/download-artifact@v4
-        with:
-          name: android
-          path: dist/android
-        continue-on-error: true
-
-      - name: Collect all artifacts
+      - name: Flatten and verify artifacts
+        shell: bash
         run: |
-          mkdir -p dist/all
-          cp -r dist/windows/* dist/all/ 2>/dev/null || true
-          cp -r dist/macos/* dist/all/ 2>/dev/null || true
-          cp -r dist/linux/* dist/all/ 2>/dev/null || true
-          cp -r dist/android/* dist/all/ 2>/dev/null || true
-          ls -la dist/all/
+          set -euo pipefail
+          mkdir -p upload
+          find dist -type f -exec cp {} upload/ \; 2>/dev/null || true
+          rm -f upload/*.blockmap upload/*.yml upload/*.yaml 2>/dev/null || true
+          echo "--- artifacts ---"
+          ls -lh upload || true
+          VERSION="${GITHUB_REF_NAME#v}"
+          missing=""
+          ls upload/*.exe >/dev/null 2>&1 || missing="$missing windows"
+          { ls upload/*.dmg >/dev/null 2>&1 || ls upload/*-mac.zip >/dev/null 2>&1 || ls upload/*.zip >/dev/null 2>&1; } || missing="$missing macos"
+          ls upload/*.AppImage >/dev/null 2>&1 || missing="$missing linux"
+          ls upload/*.apk >/dev/null 2>&1 || missing="$missing android"
+          echo "MISSING=${missing# }" >> "$GITHUB_ENV"
+          if [ -n "$missing" ]; then
+            echo "::warning::Release is missing artifacts for:${missing}"
+          fi
+          if [ -z "$(ls -A upload 2>/dev/null || true)" ]; then
+            echo "::error::No build artifacts were produced; nothing to publish."
+            exit 1
+          fi
+          # Guard against the old bug where a release shipped files with the
+          # previous version in the filename.
+          if ls upload/* | grep -qv -- "-${VERSION}"; then
+            echo "--- warning: some asset names do not contain ${VERSION} ---"
+            ls upload
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Generate release notes
+        shell: bash
         run: |
-          cat << 'EOF' > release_notes.md
-          # AI-TRADER ${{ github.ref_name }}
-
-          ## 📥 Downloads
-
-          ### Windows
-          - `AI-TRADER-${{ github.ref_name }}-x64.exe` — NSIS installer
-          - `AI-TRADER-${{ github.ref_name }}-x64-portable.exe` — Portable (no install)
-
-          ### macOS
-          - `AI-TRADER-${{ github.ref_name }}-x64.dmg` — Intel Macs
-          - `AI-TRADER-${{ github.ref_name }}-arm64.dmg` — Apple Silicon (M1/M2/M3)
-          - `AI-TRADER-${{ github.ref_name }}-x64-mac.zip` / `arm64-mac.zip` — Zip archives
-
-          ### Linux
-          - `AI-TRADER-${{ github.ref_name }}-x86_64.AppImage` — Runs anywhere (AppImage)
-          - `AI-TRADER-${{ github.ref_name }}-x86_64.deb` — Debian/Ubuntu/Mint
-
-          ### Android
-          - `AI-TRADER-${{ github.ref_name }}-android-debug.apk` — Debug build (connects to remote core)
-
-          > **Note:** Android and iOS apps are **remote-control shells** — they connect to the Python core running on your PC (same Wi-Fi) or a tunnel (Tailscale/ngrok). The core does not run on the phone.
-
-          ## 🖥️ Platform Notes
-
-          | Platform | MT5 Support | Other Brokers | Notes |
-          |----------|-------------|---------------|-------|
-          | Windows | ✅ Native | ✅ All | Full support |
-          | macOS | ❌ Use MetaAPI | ✅ MetaAPI, CCXT, Alpaca, OANDA | MT5 terminal is Windows-only |
-          | Linux | ❌ Use MetaAPI | ✅ MetaAPI, CCXT, Alpaca, OANDA | MT5 terminal is Windows-only |
-          | Android | Remote only | Remote only | Connects to PC core |
-          | iOS | Remote only | Remote only | Needs Apple Developer account ($99/yr) |
-
-          ## 🚀 Quick Start
-
-          1. Download the installer for your OS
-          2. Install & launch
-          3. **Models** tab → Add Groq/OpenRouter/other API key → Test
-          4. **Brokers** tab → Add MT5 (Windows) or MetaAPI/CCXT/Alpaca/OANDA → Test
-          5. **Autopilot** tab → Enable → Run Once (demo) → Watch dashboard
-          6. Settings → Risk → Configure limits
-
-          ## 🔐 Security
-
-          - API keys encrypted locally (Fernet AES-128 + machine seed)
-          - No telemetry, no cloud, no required accounts
-          - Paper/demo mode by default — live trading requires explicit opt-in
-
-          ## 📱 Mobile Setup (Android)
-
-          1. Install APK on phone
-          2. Ensure phone & PC on same Wi-Fi (or use Tailscale/ngrok tunnel)
-          2. App Settings → Core URL → `http://<PC-IP>:8765` or `https://<tunnel>.ts.net`
-          4. Use full UI remotely
-
-          ## 📦 What's Included
-
-          - **27 Skills** (16 built-in + 11 from trader-skill): risk, sizing, analyst, screener, alerts, copycat, pelosi, budget, tax, rebalance, broker, news, backtest validator, market analyst, pair screener, portfolio rebalance, prop firm guard, crypto perp guard, technical analysis, trade execution, trade journal, web research, MCP builder, model provider setup, news catalyst, position sizing
-          - **7 Broker Adapters**: Paper, MT5 (Windows), MetaAPI, CCXT, Alpaca, OANDA, Webhook
-          - **6 Model Providers** (pre-configured): Groq, Cerebras, Google AI Studio, NVIDIA NIM, Ollama, OpenRouter
-          - **4 MCP Servers**: Fetch, Firecrawl, Playwright, Context7
-
-          ---
-          **Full Changelog:** https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
-          EOF
+          set -euo pipefail
+          {
+            echo "# AI-TRADER ${GITHUB_REF_NAME}"
+            echo
+            echo "Autonomous, risk-gated trading cockpit. Paper/demo by default; live trading needs two explicit switches."
+            echo
+            echo "## Downloads"
+            echo
+            echo '| Platform | File | What it is |'
+            echo '|----------|------|------------|'
+            for f in upload/*; do
+              n="$(basename "$f")"
+              case "$n" in
+                *portable.exe) p="Windows"; d="Portable — no install, no admin rights" ;;
+                *.exe)        p="Windows"; d="Installer (NSIS). Bundles its own Python core." ;;
+                *.dmg)        p="macOS";   d="Disk image (unsigned: right-click → Open)" ;;
+                *.zip)        p="macOS";   d="Zip archive" ;;
+                *.AppImage)   p="Linux";   d="AppImage — chmod +x and run" ;;
+                *.deb)        p="Linux";   d="Debian/Ubuntu package" ;;
+                *.apk)        p="Android"; d="Debug APK — remote control for the core on your PC" ;;
+                *)            p="Other";   d="Build artifact" ;;
+              esac
+              echo "| $p | \`$n\` | $d |"
+            done
+            echo
+            if [ -n "${MISSING:-}" ]; then
+              echo "> **Not in this release:** ${MISSING}."
+              echo "> The build log for that platform is in the Actions run linked below."
+              echo
+            fi
+            echo "## First run"
+            echo
+            echo "1. Install and launch. The app starts its own local core on port 8765 — no Python, no terminal."
+            echo "2. **Models** → add a provider key (Groq, Cerebras, Google AI Studio, OpenRouter, Ollama) → **Test**."
+            echo "3. **Brokers** → Paper for a rehearsal, or MT5 on Windows (terminal path is auto-detected) → **Test**."
+            echo "4. **Autopilot** → *Run one cycle* to watch the vote, the sizing and the risk gate. Live stays locked."
+            echo
+            echo "## Notes"
+            echo
+            echo "- Windows/macOS/Linux desktop apps bundle a frozen Python core (\`resources/core-runtime\`)."
+            echo "- The Android APK is a remote control only. Point it at \`http://<your-PC-LAN-IP>:8765\`."
+            echo "- MT5 is Windows-only; on macOS/Linux use MetaAPI, CCXT, Alpaca, OANDA or a webhook."
+            echo "- No profit is promised. Backtests and demo runs are not evidence of future returns."
+            echo
+            echo "**Full changelog:** https://github.com/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}"
+          } > release_notes.md
           cat release_notes.md
 
-      - name: Create Release
+      - name: Delete previous release for this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release delete "${GITHUB_REF_NAME}" --yes --cleanup-tag=false || true
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -277,6 +386,24 @@ jobs:
           body_path: release_notes.md
           draft: false
           prerelease: false
-          files: dist/all/*
+          fail_on_unmatched_files: true
+          files: upload/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        shell: bash
+        run: |
+          {
+            echo "### AI-TRADER ${GITHUB_REF_NAME}"
+            echo
+            echo "| File | Size |"
+            echo "|------|------|"
+            for f in upload/*; do
+              echo "| $(basename "$f") | $(du -h "$f" | cut -f1) |"
+            done
+            if [ -n "${MISSING:-}" ]; then
+              echo
+              echo "Missing platforms: **${MISSING}** — check the failing job above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,10 +1,13 @@
 {
   "name": "ai-trader",
   "productName": "AI-TRADER",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "AI-TRADER - a Claude-style trading cockpit with custom models, MCP tools and broker execution.",
-  "author": "AI-TRADER",
+  "author": {
+    "name": "AI-TRADER",
+    "email": "maintainer@ai-trader.app"
+  },
   "license": "MIT",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -56,6 +59,11 @@
       "dist-electron/**/*"
     ],
     "extraResources": [
+      {
+        "from": "core-runtime",
+        "to": "core-runtime",
+        "filter": ["**/*"]
+      },
       {
         "from": "../core",
         "to": "core",

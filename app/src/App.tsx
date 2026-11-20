@@ -32,6 +32,12 @@ function readTheme(): string {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/** True inside the Capacitor Android/iOS shell (no local core there). */
+function isNativeShell(): boolean {
+  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
+  return Boolean(cap?.isNativePlatform?.());
+}
+
 export default function App() {
   const [boot, setBoot] = useState<Bootstrap | null>(null);
   const [catalog, setCatalog] = useState<McpCatalogItem[]>([]);
@@ -166,11 +172,20 @@ export default function App() {
             <WifiOff size={18} />
           </div>
           <h1 className="font-display text-xl">Core offline</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
-            The interface could not reach the Python core. Start it with{" "}
-            <code className="rounded px-1 py-0.5 text-[11px]" style={{ background: "var(--code)" }}>py -3.12 core/main.py</code>{" "}
-            or point the app at another machine.
-          </p>
+          {isNativeShell() ? (
+            <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+              Enter the address of the PC running AI-TRADER — for example{" "}
+              <code className="rounded px-1 py-0.5 text-[11px]" style={{ background: "var(--code)" }}>http://192.168.1.10:8765</code>.
+              The phone and the PC must be on the same Wi-Fi and the desktop app must be open.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm" style={{ color: "var(--muted)" }}>
+              The desktop app starts its own bundled core, so this should not happen. Open{" "}
+              <code className="rounded px-1 py-0.5 text-[11px]" style={{ background: "var(--code)" }}>%APPDATA%\AI-TRADER\logs\core.log</code>{" "}
+              for the reason, then press Retry. Browser-only dev sessions need{" "}
+              <code className="rounded px-1 py-0.5 text-[11px]" style={{ background: "var(--code)" }}>py -3.12 core/main.py</code>.
+            </p>
+          )}
           {bootError && (
             <div className="mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-[11px]" style={{ background: "color-mix(in srgb, var(--err) 8%, transparent)", color: "var(--err)" }}>
               <AlertTriangle size={12} className="mt-0.5" /> {bootError}
@@ -182,7 +197,7 @@ export default function App() {
             value={coreUrlDraft}
             onChange={(e) => setCoreUrlDraft(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && connect()}
-            placeholder="http://127.0.0.1:8765"
+            placeholder={isNativeShell() ? "http://192.168.1.10:8765" : "http://127.0.0.1:8765"}
           />
           <div className="mt-4 flex gap-2">
             <button

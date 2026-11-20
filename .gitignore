@@ -33,6 +33,7 @@ data/
 
 # Electron build
 app/release/
+app/release-*/
 app/dist/
 app/dist-electron/
 app/node_modules/
@@ -71,3 +72,7 @@ yarn-error.log*
 # Test artifacts
 coverage/
 .nyc_output/
+
+# Frozen core payload (built by core/build_sidecar.py)
+app/core-runtime/*
+!app/core-runtime/README.md

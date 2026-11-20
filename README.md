@@ -47,17 +47,25 @@ built the other way around:
 | **Approvals** | Order cards and dangerous MCP tool calls wait in an approvals inbox. |
 | **Audit** | Every provider, setting, order, approval and kill-switch change is appended to a local audit log. |
 | **Cross-platform** | Electron for Windows/macOS, browser mode, Capacitor for Android/iOS. |
-| **Zero-config (v0.1.1+)** | Core binds `0.0.0.0` by default, Windows Firewall auto-rule, MT5 terminal auto-detect, LAN IP auto-discovery for mobile. |
+| **Zero-config (v0.1.1+)** | Bundled Python core (no installs), core binds `0.0.0.0`, Windows Firewall auto-rule, MT5 terminal auto-detect. |
 
 ---
 
-## Quick start (Windows)
+## Quick start
+
+### Use a release (no toolchain)
+
+Download the installer for your OS from
+<https://github.com/vicky2211-2002/AI-TRADER/releases> and run it. The desktop
+builds include their own Python core, so there is nothing else to install.
+
+### Build from source (Windows)
 
 ```powershell
 cd "C:\Users\Shivani Babar\forex_trader_bot\AI-TRADER"
 
-# 1. Core (Python 3.11/3.12). Plain `python` on this machine is a pip-less venv,
-#    so use the launcher:
+# 1. Core dependencies (plain `python` on this machine is a pip-less venv,
+#    so use the 3.12 launcher):
 py -3.12 -m pip install -r core\requirements.txt
 
 # 2. UI
@@ -67,6 +75,14 @@ npm run build:web
 
 # 3. Desktop app (spawns the core automatically)
 npm run electron
+```
+
+To reproduce the shipped installer, freeze the core first and then package:
+
+```powershell
+py -3.12 core\build_sidecar.py --clean   # -> app\core-runtime\aitrader-core.exe
+cd app
+npm run dist:win                         # -> app\release\AI-TRADER-0.1.1-x64.exe
 ```
 
 After `npm run build:web`, the core also serves the built UI itself at
@@ -165,22 +181,32 @@ live account.
 
 ---
 
-## Zero-config features (v0.1.1+)
+## Zero-config install (v0.1.1+)
 
-| Feature | Before | Now |
-|---------|--------|-----|
+The installers are self-contained: they ship a **frozen Python core**
+(`resources/core-runtime/aitrader-core.exe`) with FastAPI, the vault and the
+MetaTrader 5 bridge already inside. You do not install Python, pip, Node or any
+package to run the desktop app.
+
+| Feature | Before v0.1.1 | Now |
+|---------|---------------|-----|
+| **Python runtime** | User installs Python 3.12 + `pip install -r requirements.txt` | **Bundled** — nothing to install |
 | **Core binding** | `127.0.0.1` only | **`0.0.0.0`** — LAN/mobile works instantly |
-| **Windows Firewall** | Manual `netsh` command | **Auto-added** on first launch |
+| **Windows Firewall** | Manual `netsh` command | **Auto-attempted** on first launch; Windows may ask once |
 | **VC++ Redistributable** | User downloads manually | **Detected at startup**, prints URL if missing |
 | **MT5 Terminal** | User finds path manually | **Auto-detected** (common paths + registry) |
-| **Mobile Core URL** | User types IP manually | **Auto-discovery** → Android app gets LAN IP from core |
+| **Asset names** | Could differ from the tag | **Stamped from the tag** — `AI-TRADER-0.1.1-x64.exe` |
 
-**End user experience:**
-1. Download `.exe` → Run
-2. **Firewall dialog appears once** → Click "Allow"
-3. App opens → Models tab → Add API key → Test
-4. Brokers tab → MT5 terminal **auto-detected** → Enter login/pass/server → Test
-5. **Android:** Install APK → Core URL **pre-filled** with PC's LAN IP → Connect
+**End user experience (Windows):**
+1. Download `AI-TRADER-<version>-x64.exe` → run it.
+2. If Windows asks about the firewall, click **Allow** (needed only for phone access).
+3. The app opens; its own core is already running on port 8765.
+4. **Models** → paste a key → **Test**.
+5. **Brokers** → MT5 path is pre-filled → login/password/server → **Test**.
+
+**Android:** install the APK, then type your PC's LAN address
+(`http://192.168.x.x:8765`) in the Core URL field. The phone cannot discover the
+PC by itself, and the core never runs on the phone.
 
 ---
 
@@ -209,8 +235,9 @@ AI-TRADER/
 │  └─ tests/              14 offline regression tests
 ├─ app/                   React + TypeScript + Tailwind + Vite
 │  ├─ electron/
-│  │  ├─ main.ts          Electron main — LAN discovery, MT5 info IPC
+│  │  ├─ main.ts          Electron main — spawns bundled core, LAN + MT5 IPC
 │  │  └─ preload.js
+│  ├─ core-runtime/       frozen Python core (built by core/build_sidecar.py)
 │  └─ src/components/     Autopilot dashboard, Chat, Models, MCP, Skills, Brokers, Trades, Settings
 ├─ mobile/                Capacitor shell for Android/iOS
 ├─ skills/                **27 Markdown trading playbooks**
@@ -273,6 +300,10 @@ cd app
 npx tsc -p tsconfig.json --noEmit
 npm run build
 ```
+
+The frozen core is verified the same way by hand: build it, start it on a spare
+port, and check `/api/health`, `/api/skills` and `/api/brokers/mt5/status`
+against a temporary `AI_TRADER_HOME`.
 
 ---
 

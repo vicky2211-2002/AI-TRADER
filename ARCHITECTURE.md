@@ -41,12 +41,18 @@ AI-TRADER is two processes and one shared UI bundle:
 `app/electron/main.ts`:
 
 1. `app.whenReady()` probes `GET /api/health` on `127.0.0.1:8765`.
-2. If no AI-TRADER core answers, it spawns one. Candidate interpreters:
-   `AI_TRADER_PYTHON`, then `py -3.12`, `py -3`, `python` (Windows), or
-   `python3`, `python` (macOS/Linux).
-   - **Passes `AI_TRADER_HOST=0.0.0.0`** so core binds to all interfaces.
-   - Core auto-adds **Windows Firewall rule** for port 8765 (first run).
-   - Core detects **VC++ Redistributable** and **MT5 terminal** paths.
+2. If no AI-TRADER core answers, it spawns one:
+   - **First choice — the bundled core** at
+     `resources/core-runtime/aitrader-core(.exe)`. This is a PyInstaller freeze of
+     `core/` (FastAPI + uvicorn + vault + the Windows MetaTrader5 bridge), so a
+     normal install needs no Python at all.
+     - **Passes `AI_TRADER_HOST=0.0.0.0`** so core binds to all interfaces.
+     - Core auto-attempts a **Windows Firewall rule** for port 8765.
+     - Core detects **VC++ Redistributable** and **MT5 terminal** paths.
+   - **Fallback — a system interpreter** when `core-runtime` is absent (dev
+     checkout, or a build made without `core/build_sidecar.py`): `AI_TRADER_PYTHON`,
+     then `py -3.12`, `py -3`, `python` (Windows), or `python3`, `python`
+     (macOS/Linux), running `resources/core/main.py`.
 3. It waits up to ~30 s, then opens the window. Core stdout/stderr go to
    `<userData>/logs/core.log`.
 4. On quit it kills the child process tree (`taskkill /T /F` on Windows).
@@ -191,6 +197,7 @@ patch|remove|drop|kill|install` require approval unless auto-execute is on.
 | `autopilot.py` | Background loop: model voting, sizing, paper exits, decision/equity persistence, dashboard payload | Uses the same `risk.evaluate_order` gate |
 | `api.py` | HTTP surface + streaming | **New: `/api/brokers/mt5/status` endpoint** |
 | `seed.py` | First-run providers/MCP/accounts | Idempotent |
+| `build_sidecar.py` | PyInstaller freeze of the core for the installers | Outputs `app/core-runtime/` |
 | `main.py` | Uvicorn entry — **auto firewall, VC++ check, MT5 detect** | `--lan`, `--reload`, `--port` |
 
 ### Storage

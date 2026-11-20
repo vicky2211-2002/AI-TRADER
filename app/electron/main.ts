@@ -23,6 +23,17 @@ function skillsDir(): string {
   return path.resolve(__dirname, "..", "..", "skills");
 }
 
+/**
+ * Bundled Python core (PyInstaller sidecar) shipped inside the installer.
+ * When present, the app never needs a system Python installation.
+ */
+function bundledCore(): string | null {
+  if (!app.isPackaged) return null;
+  const exe = process.platform === "win32" ? "aitrader-core.exe" : "aitrader-core";
+  const full = path.join(process.resourcesPath, "core-runtime", exe);
+  return existsSync(full) ? full : null;
+}
+
 function pythonCandidates(): { cmd: string; args: string[] }[] {
   if (process.env.AI_TRADER_PYTHON) {
     return [{ cmd: process.env.AI_TRADER_PYTHON, args: [] }];
@@ -96,8 +107,9 @@ function startCore(): void {
   const log = createWriteStream(path.join(logs, "core.log"), { flags: "a" });
   const dir = coreDir();
   const entry = path.join(dir, "main.py");
+  const bundled = bundledCore();
 
-  if (!existsSync(entry)) {
+  if (!bundled && !existsSync(entry)) {
     dialog.showErrorBox("AI-TRADER", `Core not found at ${entry}`);
     return;
   }
@@ -116,29 +128,38 @@ function startCore(): void {
     env.AI_TRADER_UI = path.join(process.resourcesPath, "ui");
   }
 
+  const launch = (cmd: string, args: string[], cwd: string) => {
+    const child = spawn(cmd, args, {
+      cwd,
+      env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    child.stdout?.pipe(log);
+    child.stderr?.pipe(log);
+    child.on("error", () => {
+      /* try next candidate */
+    });
+    child.on("exit", (code) => {
+      log.write(`\n[core exited ${code}]\n`);
+      coreProcess = null;
+    });
+    coreProcess = child;
+    coreSpawnedByUs = true;
+    log.write(`\n[start] ${cmd} ${args.join(" ")}\n`);
+    if (lanIp) {
+      log.write(`[lan] ${lanIp}:${CORE_PORT}\n`);
+    }
+  };
+
+  if (bundled) {
+    launch(bundled, [], path.dirname(bundled));
+    return;
+  }
+
   for (const candidate of pythonCandidates()) {
     try {
-      const child = spawn(candidate.cmd, [...candidate.args, entry], {
-        cwd: dir,
-        env,
-        windowsHide: true,
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      child.stdout?.pipe(log);
-      child.stderr?.pipe(log);
-      child.on("error", () => {
-        /* try next candidate */
-      });
-      child.on("exit", (code) => {
-        log.write(`\n[core exited ${code}]\n`);
-        coreProcess = null;
-      });
-      coreProcess = child;
-      coreSpawnedByUs = true;
-      log.write(`\n[start] ${candidate.cmd} ${candidate.args.join(" ")} ${entry}\n`);
-      if (lanIp) {
-        log.write(`[lan] ${lanIp}:${CORE_PORT}\n`);
-      }
+      launch(candidate.cmd, [...candidate.args, entry], dir);
       break;
     } catch {
       continue;

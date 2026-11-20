@@ -11,16 +11,19 @@ Three artifacts come from one codebase:
 | Android | Capacitor | `.apk` / `.aab` |
 | iOS | Capacitor | `.ipa` (macOS + Xcode only) |
 
-The Python core is **not** compiled into the Electron bundle. The
-packaged app ships the core source and launches a system Python. See
-[Bundling Python](#bundling-python) for the trade-offs and the upgrade path.
+The Python core **is** compiled into the desktop bundle since v0.1.1: each
+installer carries a PyInstaller freeze of `core/` and Electron launches it
+directly. End users need no Python, pip or Node. See
+[Bundling Python](#7-bundling-python-now-the-default) — you only need the
+toolchain below to *build* the app, not to run it.
 
 **v0.1.1+ Zero-config features baked into builds:**
+- Bundled Python core (`resources/core-runtime`) — no system Python required
 - Core binds `0.0.0.0:8765` by default → LAN/mobile works instantly
-- Windows Firewall rule auto-added on first launch
+- Windows Firewall rule auto-attempted on first launch
 - VC++ Redistributable detection with download URL if missing
 - MT5 terminal auto-detection (common paths + registry)
-- LAN IP auto-discovery → Android app gets Core URL pre-filled
+- Asset filenames stamped from the git tag (`AI-TRADER-0.1.1-x64.exe`)
 
 ---
 
@@ -76,6 +79,7 @@ npm run build:web
 ## 2. Windows desktop
 
 ```powershell
+py -3.12 core\build_sidecar.py --clean   # bundle the Python core first
 cd app
 npm run dist:win
 ```
@@ -92,6 +96,9 @@ Artifacts:
 app/release/AI-TRADER-0.1.1-x64.exe          # NSIS installer
 app/release/AI-TRADER-0.1.1-x64-portable.exe # portable
 ```
+
+The version comes from `app/package.json`; CI overwrites it from the git tag so
+asset names always match the release.
 
 NSIS options are in `package.json → build.nsis`: install directory is selectable,
 desktop shortcut is created, one-click is off.
@@ -124,8 +131,8 @@ variables in CI, never commit them).
 
 ### Portable caveat
 
-The portable `.exe` still needs Python on the target machine. If that is not
-acceptable, see [Bundling Python](#bundling-python).
+The portable `.exe` unpacks to a temp folder on launch and needs no Python
+either — the frozen core travels with it.
 
 ---
 
@@ -156,13 +163,15 @@ Without notarisation, Gatekeeper blocks the app on other Macs.
 
 ### Core on macOS
 
+- Bundled as `resources/core-runtime/aitrader-core` (universal per build arch).
 - `MetaTrader5` is **not available**. Use the **MetaAPI** adapter for MT5/MT4.
-- The Electron shell looks for `python3` then `python`. Point it at a specific
-  interpreter with `AI_TRADER_PYTHON=/opt/homebrew/bin/python3.12`.
+- The frozen core needs no interpreter. For development against
+  `resources/core/main.py`, Electron looks for `python3` then `python`; point it
+  at a specific one with `AI_TRADER_PYTHON=/opt/homebrew/bin/python3.12`.
 - The core data directory becomes
   `~/Library/Application Support/AI-TRADER` (Electron passes its `userData` path).
 
-Install core dependencies into the same interpreter:
+For development, install core dependencies into the same interpreter:
 
 ```bash
 /opt/homebrew/bin/python3.12 -m pip install -r core/requirements.txt
@@ -215,39 +224,37 @@ Install:
 adb install -r mobile\android\app\build\outputs\apk\debug\app-debug.apk
 ```
 
-### Connect to the core (v0.1.1+ auto-discovery)
+### Connect to the core
 
-1. Start the core on PC (binds `0.0.0.0:8765` by default)
-2. Windows Firewall dialog appears once → click "Allow"
-3. Open Android app → **Core URL is pre-filled** with PC's LAN IP
-4. Tap Connect → full UI works
+1. Start the desktop app on the PC (its core binds `0.0.0.0:8765`).
+2. If Windows Firewall asks, allow **Private** networks.
+3. On the phone: **Settings → Core URL** → `http://<PC-LAN-IP>:8765`.
+4. Tap **Connect**.
+
+The APK build already permits cleartext HTTP for that LAN call (see below), so
+there is no manifest editing to do.
 
 ### Cleartext HTTP on Android
 
-Android 9+ blocks plain HTTP. Options:
+The phone talks to your PC over plain HTTP on the LAN. Android 9+ blocks that by
+default, so the CI build injects a permissive network-security config into the
+generated project:
 
-- **Best:** use an HTTPS tunnel (Tailscale Funnel, Cloudflare Tunnel) and an
-  `https://` core URL. Nothing to change in the app.
-- **LAN only:** add `android/app/src/main/res/xml/network_security_config.xml`:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<network-security-config>
-  <domain-config cleartextTrafficPermitted="true">
-    <domain includeSubdomains="false">192.168.1.42</domain>
-  </domain-config>
-</network-security-config>
+```
+mobile/android/app/src/main/res/xml/network_security_config.xml
+  <base-config cleartextTrafficPermitted="true" />
+mobile/android/app/src/main/AndroidManifest.xml
+  android:networkSecurityConfig="@xml/network_security_config"
+  android:usesCleartextTraffic="true"
 ```
 
-Reference it from `AndroidManifest.xml`:
+`mobile/capacitor.config.ts` also sets `android.allowMixedContent: true`, because
+the WebView runs on `https://localhost` and the core is `http://192.168.x.x`.
 
-```xml
-<application
-    android:networkSecurityConfig="@xml/network_security_config"
-    ... >
-```
-
-Never enable global cleartext for a released build.
+If you build the APK locally instead of via CI, run `npx cap sync android` and
+then repeat those two edits — `cap` regenerates the manifest on some upgrades.
+For anything beyond a trusted home LAN, use an HTTPS tunnel (Tailscale Funnel,
+Cloudflare Tunnel) and drop the cleartext config.
 
 ### Release signing
 
@@ -298,74 +305,73 @@ tool work on the core host.
 
 ---
 
-## 7. Bundling Python
+## 7. Bundling Python (now the default)
 
-Current behavior: Electron ships `core/**/*.py` as a resource and spawns
-`py -3.12` / `python3`. Target machines need Python + `requirements.txt`.
+Since v0.1.1 the installers ship a **frozen core** instead of asking users to
+install Python:
 
-Why it is done this way in 0.1.1:
-
-- `MetaTrader5` is a Windows-only native package; bundling it blindly breaks
-  macOS/Linux.
-- Users often already have a Python they trust.
-- A frozen core makes MCP `npx`/`uvx` children and debugging harder.
-
-Upgrade path (recommended before public distribution):
-
-1. Build a **core sidecar** with PyInstaller on each OS:
-
-```powershell
-pyinstaller --noconfirm --onedir --name aitrader-core `
-  --add-data "core\seed;seed" `
-  --add-data "skills;skills" `
-  core\main.py
+```
+core/build_sidecar.py  →  app/core-runtime/aitrader-core(.exe) + _internal/
+                       →  electron-builder extraResources
+                       →  <install dir>/resources/core-runtime/
+                       →  Electron spawns it on Startup
 ```
 
-2. Copy `dist/aitrader-core/` into `app/resources/core-runtime/`.
-3. In `electron/main.ts`, prefer `path.join(process.resourcesPath,
-   "core-runtime", "aitrader-core(.exe)")` and fall back to Python.
-4. Build per-platform (Windows on Windows, macOS on macOS) because PyInstaller
-   does not cross-compile.
+```powershell
+py -3.12 core\build_sidecar.py --clean     # Windows
+python3 core/build_sidecar.py --clean      # macOS / Linux
+```
 
-Alternatively use `uv` to vendor a relocatable interpreter. Either way, sign the
-sidecar on macOS or Gatekeeper will kill it.
+What is inside: FastAPI, uvicorn, pydantic, httpx, cryptography (Fernet vault),
+sqlite, the seed JSON, and — on Windows only — the `MetaTrader5` bridge. Size on
+Windows is roughly 100 MB unpacked, which is why the installer grew. `ccxt` is
+**not** bundled (≈150 MB extra); set `AI_TRADER_BUNDLE_CCXT=1` if you want it.
+
+Build rules:
+
+- PyInstaller cannot cross-compile. Build the sidecar on each OS you ship to;
+  the CI matrix does exactly that.
+- Unsigned sidecars are flagged by SmartScreen/Gatekeeper like the main app. Sign
+  both on macOS or the app will be killed on launch.
+- `resources/core/main.py` is still shipped as a fallback. If the frozen binary
+  is missing or fails to start, Electron falls back to a system Python — useful
+  for development, never expected for an end user.
+- When adding a new core dependency, re-run the sidecar build; there is no
+  auto-discovery.
 
 ---
 
-## 8. CI outline (GitHub Actions)
+## 8. CI (GitHub Actions)
 
-```yaml
-name: build
-on: [push, workflow_dispatch]
-jobs:
-  core:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: pip install -r AI-TRADER/core/requirements-dev.txt
-      - run: pytest AI-TRADER/core/tests -q
-        env: { AI_TRADER_HOME: /tmp/aitrader }
+`.github/workflows/build-all.yml` runs on every `v*` tag (and manually):
 
-  ui:
-    runs-on: ubuntu-latest
-    defaults: { run: { working-directory: AI-TRADER/app } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm, cache-dependency-path: AI-TRADER/app/package-lock.json }
-      - run: npm ci
-      - run: npx tsc -p tsconfig.json --noEmit
-      - run: npm run build
+| Job | Runner | Output |
+|-----|--------|--------|
+| Windows | `windows-latest` | `.exe` installer + portable |
+| macOS | `macos-latest` | `.dmg` + `.zip` |
+| Linux | `ubuntu-latest` | `.AppImage` + `.deb` |
+| Android | `ubuntu-latest` | debug `.apk` |
+| Publish | `ubuntu-latest` | replaces the release for that tag with exactly those files |
+
+What the workflow does that a naive one does not:
+
+1. **Stamps the version from the tag** into `app/package.json`,
+   `mobile/package.json`, `core/aitrader/__init__.py` and `config.py`, so a
+   `v0.1.2` tag can never produce `AI-TRADER-0.1.1-*.exe`.
+2. **Builds the frozen core** with `core/build_sidecar.py` before packaging.
+3. **Collects** whatever electron-builder produced and fails the job with the
+   last 100 log lines when a platform produced nothing.
+4. **Deletes the previous release for the tag** before uploading, so stale assets
+   from an earlier failed run cannot survive.
+5. **Writes release notes from the files that actually exist**, and warns which
+   platforms are missing instead of advertising downloads that 404.
+
+Tag a release with:
+
+```powershell
+git tag v0.1.2
+git push origin v0.1.2
 ```
-
-Desktop artifacts need a matrix of `windows-latest`, `macos-latest`,
-`ubuntu-latest`, with signing secrets injected as environment variables.
-
-**Current workflow (v0.1.1+):** `.github/workflows/build-all.yml` builds all 4
-platforms (Windows, macOS, Linux, Android) on tag push and creates a GitHub
-Release with all artifacts.
 
 ---
 
@@ -374,13 +380,15 @@ Release with all artifacts.
 - [ ] `pytest core/tests -q` green
 - [ ] `npx tsc -p tsconfig.json --noEmit` clean
 - [ ] `npm run build` succeeds
+- [ ] `python core/build_sidecar.py --clean` runs, and the frozen core answers
+      `/api/health` on a spare port
 - [ ] Version bumped in `app/package.json`, `core/aitrader/__init__.py`,
-      `mobile/package.json`
+      `core/aitrader/config.py`, `mobile/package.json` (CI re-stamps from the tag)
 - [ ] Icons present in `app/build/`
 - [ ] No `.env`, key, `vault.key`, DB or log in the repo
 - [ ] `cryptography` is a documented dependency
-- [ ] Installer tested on a **clean** VM (no Python) to confirm the expected
-      dependency message
+- [ ] Installer tested on a **clean** VM with **no Python installed**: the window
+      must open and `/api/health` must answer
 - [ ] Smoke test: add provider → test → chat → paper order → approve → close
 - [ ] README and docs screenshots/commands still accurate
 
@@ -390,16 +398,18 @@ Release with all artifacts.
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Window opens, "Core offline" | Python deps missing or wrong interpreter | Check `%APPDATA%\AI-TRADER\logs\core.log`; set `AI_TRADER_PYTHON` |
-| `Core not found at ...\resources\core\main.py` | `extraResources` didn't copy | Rebuild; verify `app/release/win-unpacked/resources/core/main.py` |
+| Window opens, "Core offline" | Bundled core failed to start | Check `%APPDATA%\AI-TRADER\logs\core.log`; the first lines name the missing DLL or port clash |
+| `Core not found at ...\resources\core\main.py` | Neither `core-runtime` nor core sources were packaged | Rebuild; verify `resources/core-runtime/aitrader-core.exe` exists |
 | Blank white window in production | `base` not relative or `loadFile` path wrong | Keep `base: "./"`; check `dist/index.html` exists |
-| `spawn py ENOENT` | Python not on PATH | Install Python or set `AI_TRADER_PYTHON` |
-| Android app can't reach core | Firewall / wrong IP / `127.0.0.1` | Use LAN IP, allow port, bind `0.0.0.0`, token |
+| `spawn py ENOENT` | A dev build without `core-runtime`, and no Python on PATH | Run `core/build_sidecar.py`, or install Python and set `AI_TRADER_PYTHON` |
+| Antivirus quarantines `aitrader-core.exe` | Unsigned PyInstaller binary | Sign the app + sidecar, or allow the folder |
+| Installer is ~200 MB | Frozen Python core + Electron | Expected; `ccxt` is excluded to keep it down |
+| Android app can't reach core | Firewall / wrong IP / `127.0.0.1` | Use the PC's LAN IP, allow port 8765, keep the desktop app open |
 | Gradle can't find SDK | `ANDROID_HOME` unset | Set it or create `android/local.properties` |
 | macOS "app is damaged" | Quarantine / unsigned | `xattr -dr com.apple.quarantine AI-TRADER.app`, or notarise |
 | electron-builder fails on symlinks (Windows) | Developer Mode off | Enable Developer Mode or run as admin |
 | **Firewall dialog doesn't appear** | Rule already exists | Core adds rule silently; check `netsh advfirewall firewall show rule name="AI-TRADER Core"` |
-| **MT5 path not auto-filled** | Terminal in non-standard location | Set manually in Brokers tab; core logs checked paths |
+| **MT5 path not auto-filled** | Terminal in a non-standard location | Set manually in Brokers tab; core logs checked paths |
 | **VC++ missing warning** | Redistributable not installed | Install from `https://aka.ms/vs/17/release/vc_redist.x64.exe` |
 
 ---
