@@ -156,26 +156,6 @@ jobs:
             exit 1
           fi
 
-      # One place that proves the MCP runtimes are actually usable, not just
-      # present. A bundle that cannot execute npx/uvx is worse than none.
-      - name: Verify bundled MCP runtimes
-        shell: bash
-        run: |
-          set -euo pipefail
-          export PATH="$PWD/app/node:$PWD/app/uv:$PATH"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            ./app/node/node.exe --version
-            ./app/node/npx.cmd --version
-            ./app/uv/uv.exe --version
-            ./app/uv/uvx.exe --version
-          else
-            ./app/node/node --version
-            ./app/node/npx --version
-            ./app/uv/uv --version
-            ./app/uv/uvx --version
-          fi
-          echo "::notice title=mcp-runtimes::Bundled Node.js and uv both execute"
-
       # Bundle uv for MCP servers — no system uv needed.
       # Both uv AND uvx are needed: the MCP catalog invokes "uvx", which is a
       # separate binary from "uv".
@@ -210,6 +190,27 @@ jobs:
             echo "::error title=uv::uvx missing after extraction"
             exit 1
           fi
+
+      # One place that proves the MCP runtimes are actually usable, not just
+      # present. A bundle that cannot execute npx/uvx is worse than none.
+      # This runs after BOTH downloads, so both folders exist.
+      - name: Verify bundled MCP runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$PWD/app/node:$PWD/app/uv:$PATH"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./app/node/node.exe --version
+            ./app/node/npx.cmd --version
+            ./app/uv/uv.exe --version
+            ./app/uv/uvx.exe --version
+          else
+            ./app/node/node --version
+            ./app/node/npx --version
+            ./app/uv/uv --version
+            ./app/uv/uvx --version
+          fi
+          echo "::notice title=mcp-runtimes::Bundled Node.js and uv both execute"
 
       - name: Build UI + Electron main
         shell: bash
