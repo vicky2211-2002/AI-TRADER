@@ -337,9 +337,18 @@ def _which(cmd: str) -> bool:
 
 
 def _is_bundled(cmd: str) -> bool:
-    """True when ``cmd`` resolves inside the installer's bundled tools folder."""
+    """True when ``cmd`` resolves inside the installer's bundled tools folder.
+
+    The test is a positive match against the folders this install actually
+    ships (``aitrader.tools.bundled_tool_dirs``). A looser check such as
+    "the parent directory exists" is true for almost every path on disk and
+    would tell the user that a system-wide Node.js is "bundled with
+    AI-TRADER" when it is not.
+    """
     import shutil
     from pathlib import Path
+
+    from .tools import is_bundled_command
 
     found = shutil.which(cmd) or shutil.which(cmd + ".cmd")
     if not found:
@@ -348,13 +357,7 @@ def _is_bundled(cmd: str) -> bool:
         resolved = Path(found).resolve()
     except Exception:
         return False
-    # resources/node/node.exe, resources/uv/uvx.exe -> parent folder is named
-    # "node" or "uv" and lives next to the core-runtime folder.
-    parent = resolved.parent.name.lower()
-    if parent not in ("node", "uv"):
-        return False
-    grandparent = resolved.parent.parent.name.lower()
-    return grandparent in ("resources", "core-runtime", "bundletest") or resolved.parent.parent.exists()
+    return is_bundled_command(resolved)
 
 
 def _mt5_available() -> bool:

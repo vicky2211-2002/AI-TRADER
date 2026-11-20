@@ -13,6 +13,7 @@ import uvicorn  # noqa: E402
 
 from aitrader.api import app  # noqa: E402
 from aitrader.config import HOST, PORT  # noqa: E402
+from aitrader.tools import bundled_tool_dirs  # noqa: E402
 
 
 def _setup_windows_firewall() -> None:
@@ -92,34 +93,11 @@ def _ensure_mt5_account_setup() -> dict:
 def _bundled_tool_dirs() -> list[str]:
     """Locate the Node.js / uv folders that ship inside the installer.
 
-    Layout in a packaged install::
-
-        <install>/resources/core-runtime/aitrader-core.exe   <- we are here
-        <install>/resources/node/node.exe, npx.cmd
-        <install>/resources/uv/uv.exe, uvx.exe
-
-    The tool folders are *siblings* of ``core-runtime``, so the search walks
-    up one level as well. In a dev checkout nothing matches, so the system
-    PATH is used instead.
+    See ``aitrader.tools`` for the layout and the search order. The API
+    layer uses the same helper, so the UI and the runtime can never
+    disagree about what is bundled.
     """
-    dirs: list[str] = []
-    # sys.executable is the frozen binary; its parent is core-runtime/.
-    exe_dir = Path(sys.executable).resolve().parent
-    # Dev fallback: core/main.py -> <repo>/core -> <repo>
-    dev_root = Path(__file__).resolve().parent.parent
-
-    bases = [
-        exe_dir,              # <resources>/core-runtime/node (unlikely but cheap)
-        exe_dir.parent,       # <resources>/node          <- packaged install
-        exe_dir.parent.parent,  # <install>/node          <- portable/unpacked
-        dev_root,             # <repo>/node              <- dev checkout
-    ]
-    for base in bases:
-        for name in ("node", "uv"):
-            folder = base / name
-            if folder.is_dir() and str(folder) not in dirs:
-                dirs.append(str(folder))
-    return dirs
+    return bundled_tool_dirs()
 
 
 def _setup_bundled_tools() -> None:

@@ -350,3 +350,68 @@ def test_dashboard_and_autopilot_endpoints(tmp_path, monkeypatch):
         c.put("/api/settings", json={"kill_switch": False})
         assert c.get("/api/autopilot").json()["running"] is False
 
+
+def test_bundled_tool_dirs_finds_sibling_folders(tmp_path, monkeypatch):
+    """The bundled runtimes are siblings of core-runtime, so the search must
+    walk up from the executable."""
+    from aitrader import tools
+
+    install = tmp_path / "install"
+    resources = install / "resources"
+    (resources / "core-runtime").mkdir(parents=True)
+    (resources / "node").mkdir()
+    (resources / "uv").mkdir()
+
+    fake_exe = resources / "core-runtime" / "aitrader-core.exe"
+    fake_exe.write_bytes(b"")
+    monkeypatch.setattr(tools.sys, "executable", str(fake_exe))
+
+    found = {Path(p).name for p in tools.bundled_tool_dirs()}
+    assert "node" in found, found
+    assert "uv" in found, found
+
+
+def test_is_bundled_command_only_matches_real_tool_folders(tmp_path, monkeypatch):
+    """A system-wide Node.js must never be reported as bundled.
+
+    The old check ended with "or resolved.parent.parent.exists()", which is
+    true for essentially every path on disk, so a system install could be
+    announced to the user as "bundled with AI-TRADER".
+    """
+    from aitrader import tools
+
+    install = tmp_path / "install"
+    resources = install / "resources"
+    (resources / "core-runtime").mkdir(parents=True)
+    (resources / "node").mkdir()
+    (resources / "uv").mkdir()
+
+    fake_exe = resources / "core-runtime" / "aitrader-core.exe"
+    fake_exe.write_bytes(b"")
+    monkeypatch.setattr(tools.sys, "executable", str(fake_exe))
+
+    bundled_npx = resources / "node" / ("npx.cmd" if sys.platform == "win32" else "npx")
+    bundled_npx.write_text("", encoding="utf-8")
+    assert tools.is_bundled_command(bundled_npx) is True
+
+    # A system install: same file name, but in a folder the bundle does not ship.
+    system_node = tmp_path / "hostedtoolcache" / "nodejs" / "20.x" / "x64"
+    system_node.mkdir(parents=True)
+    system_npx = system_node / ("npx.cmd" if sys.platform == "win32" else "npx")
+    system_npx.write_text("", encoding="utf-8")
+    assert tools.is_bundled_command(system_npx) is False
+
+
+def test_system_endpoint_reports_bundled_flags():
+    """The flags the UI uses to say "bundled with AI-TRADER" must be present
+    and honest -- they are what CI asserts on."""
+    from fastapi.testclient import TestClient
+    from aitrader.api import app
+
+    with TestClient(app) as c:
+        sysinfo = c.get("/api/system").json()
+    for key in ("node", "uv", "node_bundled", "uv_bundled", "mt5_available"):
+        assert key in sysinfo, f"/api/system missing {key}"
+    assert isinstance(sysinfo["node_bundled"], bool)
+    assert isinstance(sysinfo["uv_bundled"], bool)
+
