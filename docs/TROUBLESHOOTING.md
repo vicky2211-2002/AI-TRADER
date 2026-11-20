@@ -6,7 +6,7 @@ risk limit doing its job.
 
 ---
 
-## 1. The app says “Core offline”
+## 1. The app says "Core offline"
 
 ### Check the process
 
@@ -18,7 +18,7 @@ py -3.12 main.py
 You should see:
 
 ```
-Uvicorn running on http://127.0.0.1:8765
+Uvicorn running on http://0.0.0.0:8765
 ```
 
 If it exits immediately, run it in the foreground and read the traceback.
@@ -45,11 +45,16 @@ Kill it or start with `--port 8766` and change the URL in Settings.
 
 ### Desktop-specific
 
-- Log: `%APPDATA%\AI-TRADER\logs\core.log` (Electron’s `userData` folder).
-- Python not found: install Python 3.12 or set `AI_TRADER_PYTHON` to the full
+- **Log:** `%APPDATA%\AI-TRADER\logs\core.log` (Electron's `userData` folder).
+- **Python not found:** install Python 3.12 or set `AI_TRADER_PYTHON` to the full
   `python.exe` path, then restart the app.
-- Packaged app: confirm `resources\core\main.py` exists next to the executable.
-- Antivirus may block `py.exe` spawning; allow the app’s folder.
+- **Packaged app:** confirm `resources\core\main.py` exists next to the executable.
+- **Antivirus may block `py.exe` spawning;** allow the app's folder.
+- **Firewall dialog:** Windows will prompt once — click "Allow access" for Private networks.
+- **VC++ Redistributable missing:** Core prints download URL at startup:
+  `https://aka.ms/vs/17/release/vc_redist.x64.exe`
+- **MT5 terminal not found:** Core prints warning; install MT5, log in once, enable
+  **Tools → Options → Expert Advisors → Allow algorithmic trading**.
 
 ### Browser-specific
 
@@ -94,7 +99,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ## 3. Provider / model problems
 
-### “Add and test a model first”
+### "Add and test a model first"
 
 No provider is enabled. Models → enable one → **Test**.
 
@@ -130,7 +135,7 @@ records the last error.
   switch to a stronger model.
 - Check the core console for the last tool name.
 
-### “thinking” forever with no text
+### "thinking" forever with no text
 
 The model returned a tool call but the tool crashed silently. Open the tool card
 or the core log. MCP servers report errors on stderr.
@@ -141,7 +146,7 @@ or the core log. MCP servers report errors on stderr.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `spawn npx ENOENT` | Node not on the core’s PATH | Install Node 18+, restart the core |
+| `spawn npx ENOENT` | Node not on the core's PATH | Install Node 18+, restart the core |
 | `uvx not found` | `uv` missing | `py -3.12 -m pip install uv` |
 | `initialize timed out` | First-run package download | Run `npx -y <pkg> --help` once in a terminal |
 | `401` from an HTTP MCP | Missing auth header | Put it in env, restart the server |
@@ -164,7 +169,7 @@ Windows path arguments need forward slashes or escaped backslashes in JSON.
 
 ## 5. Broker problems
 
-### MT5
+### MT5 (v0.1.1+ auto-detection)
 
 | Error | Fix |
 |-------|-----|
@@ -174,6 +179,12 @@ Windows path arguments need forward slashes or escaped backslashes in JSON.
 | `retcode 10027` | Enable algorithmic trading in MT5 options |
 | `account is REAL but environment is DEMO` | Intentional. Fix the environment or use a demo login. |
 | Balance 0 / no account info | Log in manually once, keep the terminal open |
+| **Terminal not found** | Core auto-checks common paths. Install MT5 from broker, log in once. |
+
+**Auto-detection paths (checked in order):**
+1. `C:\Program Files\MetaTrader 5\terminal64.exe`
+2. `C:\Program Files (x86)\MetaTrader 5\terminal64.exe`
+3. `%APPDATA%\MetaQuotes\Terminal\*\terminal64.exe`
 
 Only one MT5 terminal can serve a given login at a time. Close extra instances.
 
@@ -216,7 +227,7 @@ Only one MT5 terminal can serve a given login at a time. Close extra instances.
 
 ## 6. Orders and risk
 
-### “Blocked by …”
+### "Blocked by ..."
 
 The gate is working. Read the failing row:
 
@@ -232,7 +243,7 @@ The gate is working. Read the failing row:
 | Max open positions | Close one, or raise the cap |
 | Duplicate exposure | One position per symbol by design |
 | Daily loss limit | Stop for the day |
-| Peak drawdown | Review the strategy; do not “reset” casually |
+| Peak drawdown | Review the strategy; do not "reset" casually |
 | Fresh quote | Market data stale/offline; retry |
 
 ### Order stuck in `pending_approval`
@@ -253,7 +264,7 @@ Close in the broker UI. For paper, confirm the ticket still exists.
 
 ### PnL looks wrong
 
-- Paper uses Yahoo quotes, not your broker’s bid/ask.
+- Paper uses Yahoo quotes, not your broker's bid/ask.
 - Contract size may not match your instrument. Set `config.contract_size`.
 - OANDA volume is converted from lots; check the filled units.
 - Alpaca qty is shares/coins.
@@ -267,7 +278,7 @@ Close in the broker UI. For paper, confirm the ticket still exists.
 | Skill not listed | Folder needs `SKILL.md`; press **Rescan folder** |
 | Invalid id | Lowercase letters, numbers, `-`, `_`, 2–64 chars |
 | Edits not saved | Check file permissions; the core writes under `skills/` |
-| Agent ignores a skill | Ensure it is enabled; ask it to “read the <id> skill” |
+| Agent ignores a skill | Ensure it is enabled; ask it to "read the <id> skill" |
 | Delete failed | Close editors/antivirus locks; retry |
 
 Frontmatter must start on line 1 with `---`.
@@ -284,21 +295,32 @@ Frontmatter must start on line 1 with `---`.
 | Text overflow in tables | Expected on narrow screens; scroll horizontally |
 | Toasts never appear | `ToastProvider` missing (only relevant if you fork the UI) |
 | Endless boot spinner | Core not answering; open the offline screen and set the URL |
-| Mobile drawer won’t close | Tap the backdrop or a nav item |
+| Mobile drawer won't close | Tap the backdrop or a nav item |
 
 ---
 
-## 9. Mobile
+## 9. Mobile (v0.1.1+ auto-discovery)
 
 | Symptom | Fix |
 |---------|-----|
-| `Core offline` on Wi-Fi | Use the PC LAN IP, not `127.0.0.1`; allow port 8765; same subnet |
-| `CLEARTEXT not permitted` | HTTPS tunnel, or a scoped network-security config |
+| `Core offline` on Wi-Fi | App auto-fills Core URL from PC LAN IP. If empty, use PC LAN IP manually. |
+| `CLEARTEXT not permitted` | HTTPS tunnel (Tailscale/ngrok), or a scoped network-security config |
 | Blank after install | `cd app && npm run build:web`, then `npx cap sync android` |
 | `webDir` not found | Build the UI first |
 | Gradle SDK error | Set `ANDROID_HOME` or `android/local.properties` |
-| App can’t start MCP servers | Expected: `npx`/`uvx` run on the core host |
+| App can't start MCP servers | Expected: `npx`/`uvx` run on the core host |
 | Token rejected | Paste the exact `AI_TRADER_TOKEN`; restart the core after changing it |
+
+**Auto-discovery flow (v0.1.1+):**
+1. Core starts on `0.0.0.0:8765`
+2. Electron detects LAN IP → passes to Android app via `core:lan-info` IPC
+3. Android app Settings → Core URL is **pre-filled** with `http://<PC-IP>:8765`
+4. User taps Connect → works instantly
+
+If auto-fill fails, find PC IP:
+```powershell
+ipconfig | findstr /R "IPv4.*192.168\|IPv4.*10\.\|IPv4.*172\."
+```
 
 ---
 
@@ -346,7 +368,7 @@ SQLite WAL allows concurrent readers but not two writers fighting.
 | Desktop core log | `%APPDATA%\AI-TRADER\logs\core.log` |
 | Audit trail | UI → Trades & risk → Audit, or `GET /api/audit` |
 | Provider test | Models row status + toast |
-| MCP stderr | “Test” result on failure |
+| MCP stderr | "Test" result on failure |
 | Broker response | Orders table / audit detail |
 
 Useful one-liners:
@@ -363,6 +385,9 @@ Invoke-RestMethod "http://127.0.0.1:8765/api/audit?limit=20" | Format-Table ts,a
 
 # run tests
 $env:AI_TRADER_HOME="$env:TEMP\aitrader_pytest"; py -3.12 -m pytest core\tests -q
+
+# MT5 status (v0.1.1+)
+Invoke-RestMethod http://127.0.0.1:8765/api/brokers/mt5/status
 ```
 
 ---

@@ -9,9 +9,11 @@ Runs as a **desktop app** (Windows/macOS), in the **browser**, and as an
 **Android APK** through Capacitor. The same React UI talks to a local Python
 core; the core owns the secrets, the risk engine and the broker connections.
 
-> **Status: 0.1.0, paper-first.** Paper trading is the default. Live trading is
-> off until you explicitly enable it. This is not financial advice, and no
-> backtest or demo result here is evidence of future profit.
+> **Status: v0.1.1, paper-first, zero-config.** Paper trading is the default.
+> Live trading is off until you explicitly enable it. Core binds to `0.0.0.0`
+> by default so LAN/mobile works instantly. Windows Firewall rule auto-added.
+> This is not financial advice, and no backtest or demo result here is evidence
+> of future profit.
 
 ---
 
@@ -39,12 +41,13 @@ built the other way around:
 | **Autopilot** | A background loop where 1–3 models vote BUY/SELL/HOLD, the core sizes the trade and executes it on paper/demo, and every decision is logged. Same hard risk gate; live hands-free needs two switches. |
 | **Dashboard** | What the bot is doing now (stage, symbol, cycle, next run, models voting), KPIs, equity curve, open positions, closed trades, and per-model vote history. |
 | **MCP** | Add, edit, start, stop, test and call stdio or Streamable-HTTP MCP servers. 22-item catalog (Context7, Playwright, Firecrawl, Fetch, Brave, GitHub, Postgres, CCXT, Alpaca…). |
-| **Skills** | Claude-compatible `skills/<id>/SKILL.md` playbooks. 16 trading skills seeded. Create, edit, enable, delete, rescan. |
+| **Skills** | Claude-compatible `skills/<id>/SKILL.md` playbooks. **27 trading skills** seeded (16 built-in + 11 from trader-skill). Create, edit, enable, delete, rescan. |
 | **Brokers** | Paper, MT5 (Windows), MetaAPI (cloud MT5/MT4), CCXT crypto, Alpaca, OANDA v20, HMAC webhook. |
 | **Risk** | Risk-per-trade, max lots, required SL, symbol allow-list, duplicate exposure, daily loss, peak drawdown, stale-quote rejection, kill switch. |
 | **Approvals** | Order cards and dangerous MCP tool calls wait in an approvals inbox. |
 | **Audit** | Every provider, setting, order, approval and kill-switch change is appended to a local audit log. |
 | **Cross-platform** | Electron for Windows/macOS, browser mode, Capacitor for Android/iOS. |
+| **Zero-config (v0.1.1+)** | Core binds `0.0.0.0` by default, Windows Firewall auto-rule, MT5 terminal auto-detect, LAN IP auto-discovery for mobile. |
 
 ---
 
@@ -82,14 +85,14 @@ cd app
 npm run dev          # http://localhost:5173
 ```
 
-The core listens on `http://127.0.0.1:8765` and shows up at `/api/health`.
+The core listens on `http://0.0.0.0:8765` (v0.1.1+) and shows up at `/api/health`.
 Data lives in `%APPDATA%\AI-TRADER` (override with `AI_TRADER_HOME`).
 
 ### First five minutes
 
 1. **Models → Test.** Pick Google AI Studio, Groq, Cerebras or OpenRouter, paste
    a free key, press **Test**. Or point the Ollama entry at your local server.
-2. **Chat → “Analyse EURUSD”** and watch the tool trace.
+2. **Chat → "Analyse EURUSD"** and watch the tool trace.
 3. **Skills → open `risk-manager`.** Edit it to match your own rules.
 4. **MCP servers → Catalog → Context7 → Install → Start.** Ask the chat to use it.
 5. **Brokers → Add account → Paper.** Try an order on Trades; the risk gate will
@@ -162,14 +165,33 @@ live account.
 
 ---
 
+## Zero-config features (v0.1.1+)
+
+| Feature | Before | Now |
+|---------|--------|-----|
+| **Core binding** | `127.0.0.1` only | **`0.0.0.0`** — LAN/mobile works instantly |
+| **Windows Firewall** | Manual `netsh` command | **Auto-added** on first launch |
+| **VC++ Redistributable** | User downloads manually | **Detected at startup**, prints URL if missing |
+| **MT5 Terminal** | User finds path manually | **Auto-detected** (common paths + registry) |
+| **Mobile Core URL** | User types IP manually | **Auto-discovery** → Android app gets LAN IP from core |
+
+**End user experience:**
+1. Download `.exe` → Run
+2. **Firewall dialog appears once** → Click "Allow"
+3. App opens → Models tab → Add API key → Test
+4. Brokers tab → MT5 terminal **auto-detected** → Enter login/pass/server → Test
+5. **Android:** Install APK → Core URL **pre-filled** with PC's LAN IP → Connect
+
+---
+
 ## Project layout
 
 ```
 AI-TRADER/
 ├─ core/                  Python FastAPI core
-│  ├─ main.py             entry point (uvicorn)
+│  ├─ main.py             entry point (uvicorn) — zero-config startup
 │  ├─ aitrader/
-│  │  ├─ api.py           all HTTP routes
+│  │  ├─ api.py           all HTTP routes (+ /api/brokers/mt5/status)
 │  │  ├─ agent.py         tool-calling loop + built-in tools
 │  │  ├─ autopilot.py     autonomous loop: votes, sizing, exits, dashboard data
 │  │  ├─ providers.py     OpenAI/Anthropic/Google/Azure client
@@ -181,14 +203,17 @@ AI-TRADER/
 │  │  ├─ trading.py       order lifecycle + approvals
 │  │  ├─ security.py      local vault (Fernet or obfuscated)
 │  │  ├─ db.py            SQLite store + audit
+│  │  ├─ config.py        config with 0.0.0.0 default bind
 │  │  └─ seed.py          first-run seeds
 │  ├─ seed/*.json         6 providers, 4 MCP servers, 22 catalog items
 │  └─ tests/              14 offline regression tests
 ├─ app/                   React + TypeScript + Tailwind + Vite
-│  ├─ electron/           Electron main + preload
+│  ├─ electron/
+│  │  ├─ main.ts          Electron main — LAN discovery, MT5 info IPC
+│  │  └─ preload.js
 │  └─ src/components/     Autopilot dashboard, Chat, Models, MCP, Skills, Brokers, Trades, Settings
 ├─ mobile/                Capacitor shell for Android/iOS
-├─ skills/                16 Markdown trading playbooks
+├─ skills/                **27 Markdown trading playbooks**
 └─ docs/                  everything else
 ```
 
@@ -202,7 +227,7 @@ Environment variables for the core:
 |----------|---------|---------|
 | `AI_TRADER_HOME` | `%APPDATA%\AI-TRADER` | Data, vault and SQLite location |
 | `AI_TRADER_SKILLS` | `AI-TRADER/skills` | Skills folder |
-| `AI_TRADER_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` for phone access) |
+| `AI_TRADER_HOST` | `0.0.0.0` | Bind address (v0.1.1+) |
 | `AI_TRADER_PORT` | `8765` | HTTP port |
 | `AI_TRADER_TOKEN` | empty | Required `X-AI-Trader-Token` when set |
 
@@ -219,7 +244,7 @@ pass variables in your shell, Electron, or a service wrapper.
 | [docs/AUTOPILOT.md](docs/AUTOPILOT.md) | Autonomous loop: voting, sizing, exits, dashboard, safety |
 | [docs/FREE_API_PROVIDERS.md](docs/FREE_API_PROVIDERS.md) | Free model providers, base URLs, keys, limits |
 | [docs/MCP_CATALOG.md](docs/MCP_CATALOG.md) | Every MCP server, install command, risk notes |
-| [docs/SKILLS_CATALOG.md](docs/SKILLS_CATALOG.md) | The 16 playbooks + how to write your own |
+| [docs/SKILLS_CATALOG.md](docs/SKILLS_CATALOG.md) | The 27 playbooks + how to write your own |
 | [docs/BROKER_INTEGRATION.md](docs/BROKER_INTEGRATION.md) | Per-broker setup and symbol mapping |
 | [docs/SECURITY_AND_RISK.md](docs/SECURITY_AND_RISK.md) | Threat model, vault, risk gate, live checklist |
 | [docs/BUILD_CROSS_PLATFORM.md](docs/BUILD_CROSS_PLATFORM.md) | Windows, macOS, Android builds and signing |
@@ -256,7 +281,7 @@ npm run build
 - **Demo first.** A strategy earns live money only after a documented demo
   sample with a profit factor above your threshold — not after a backtest.
 - **One position per symbol.** Duplicate exposure is blocked by default.
-- **Stop loss on every order.** There is no “mental stop” option.
+- **Stop loss on every order.** There is no "mental stop" option.
 - **No martingale, no grid recovery.** Size down after losses, never up.
 - **Secrets stay on the core host.** The phone and browser are remote controls.
 

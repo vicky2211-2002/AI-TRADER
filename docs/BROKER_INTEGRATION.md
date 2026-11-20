@@ -24,8 +24,8 @@ is allowed.
 | **oanda** | all | demo, live | ✅ | ✅ | ✅ | — | v20 FX/CFD; volume converted lots → units |
 | **webhook** | all | demo, live | ✅ (static) | — | ✅ | — | HMAC-signed JSON to your executor |
 
-A “—” means the base class raises `NotImplementedError`; close the position in the
-broker’s own UI, or extend the adapter. Requests fail loudly rather than
+A "—" means the base class raises `NotImplementedError`; close the position in the
+broker's own UI, or extend the adapter. Requests fail loudly rather than
 pretending to work.
 
 ---
@@ -62,7 +62,7 @@ py -3.12 -m pip install MetaTrader5
 3. Leave the terminal running. The adapter attaches to it; it does not need the
    GUI in the foreground, but the process must be alive.
 
-### 3. Add the account
+### 3. Add the account (v0.1.1+ auto-detection)
 
 | Field | Example | Notes |
 |-------|---------|-------|
@@ -72,8 +72,17 @@ py -3.12 -m pip install MetaTrader5
 | Login | `108862992` | Numeric |
 | Password | `••••••` | Stored encrypted |
 | Server | `MetaQuotes-Demo` | Exactly as shown in MT5 |
-| Path | `C:\Program Files\MetaTrader 5\terminal64.exe` | Optional; needed for portable/multiple terminals |
+| **Path** | *(auto-detected)* | **Optional** — core auto-finds `terminal64.exe` |
 | Symbol suffix | `.m` / `_raw` | If your broker uses suffixed symbols |
+
+**Auto-detection (v0.1.1+):**
+The core checks these paths on startup:
+1. `C:\Program Files\MetaTrader 5\terminal64.exe`
+2. `C:\Program Files (x86)\MetaTrader 5\terminal64.exe`
+3. `%APPDATA%\MetaQuotes\Terminal\*\terminal64.exe`
+
+If found, the `Path` field is pre-filled in the UI. You only need to set it
+manually for portable installs or multiple terminals.
 
 Press **Test**. A successful test shows balance, equity, currency, leverage and
 `trade_mode`.
@@ -82,10 +91,10 @@ Press **Test**. A successful test shows balance, equity, currency, leverage and
 
 The adapter refuses to trade when the configuration and the account disagree:
 
-- `environment=demo` + real account → **“Refusing to trade: account is REAL but
-  environment is DEMO.”**
-- `environment=live` + demo account → **“Account is a DEMO account but the
-  adapter is configured for LIVE.”**
+- `environment=demo` + real account → **"Refusing to trade: account is REAL but
+  environment is DEMO."**
+- `environment=live` + demo account → **"Account is a DEMO account but the
+  adapter is configured for LIVE."**
 
 This is deliberate. It is the last line of defence against a mis-click that sends
 a demo strategy to real money.
@@ -114,6 +123,25 @@ adapter calls `symbol_select(symbol, True)` before requesting a tick.
 | `Symbol 'EURUSD.m' is unknown` | Suffix missing/wrong | Set `symbol_suffix` |
 | `MT5 rejected order: 10027` | Algo trading disabled | Enable it in terminal options |
 | `no account info` | Not logged in | Log in to the terminal |
+
+### MT5 Status endpoint (v0.1.1+)
+
+```
+GET /api/brokers/mt5/status
+```
+
+Returns:
+```json
+{
+  "mt5_available": true,
+  "terminal_path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+  "vcpp_ok": true,
+  "message": "MT5 Python package available"
+}
+```
+
+Used by the Electron shell to pre-fill the MT5 path field and show status in the
+Brokers tab.
 
 ---
 
@@ -237,7 +265,7 @@ live:     https://api-fxtrade.oanda.com/v3
 - **Volume is converted from lots to units**: `0.01 EURUSD` → `1,000` units
   (contract size 100,000). This keeps sizing consistent with MT5.
 - SL/TP are sent as `stopLossOnFill` / `takeProfitOnFill`.
-- `close()` is not implemented; close in OANDA’s web platform.
+- `close()` is not implemented; close in OANDA's web platform.
 
 Start with the practice host until the account snapshot and the first fill match.
 
@@ -278,8 +306,8 @@ your executor. `positions()` and `close()` are not implemented — the executor
 owns that state.
 
 Security: use HTTPS, verify the signature, reject replayed timestamps, and keep
-the executor’s own risk checks. The webhook is a second pair of eyes, not a
-replacement for this app’s gate.
+the executor's own risk checks. The webhook is a second pair of eyes, not a
+replacement for this app's gate.
 
 ---
 
@@ -337,3 +365,4 @@ serialized back to the UI.
 - [SECURITY_AND_RISK.md](SECURITY_AND_RISK.md) — live checklist and threat model
 - [SKILLS_CATALOG.md](SKILLS_CATALOG.md) — `broker-connect` and `trade-execution`
 - [API_REFERENCE.md](API_REFERENCE.md) — account and order endpoints
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — MT5 auto-detection and common errors

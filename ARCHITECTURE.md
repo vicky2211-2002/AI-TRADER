@@ -3,7 +3,7 @@
 AI-TRADER is two processes and one shared UI bundle:
 
 1. **Core** — Python 3.11/3.12, FastAPI, SQLite. Owns secrets, models, tools,
-   risk and brokers. Listens on `127.0.0.1:8765` by default.
+   risk and brokers. Listens on **`0.0.0.0:8765`** by default (v0.1.1+).
 2. **Shell** — Electron (desktop), a browser tab, or a Capacitor WebView
    (Android/iOS). Renders the React UI and talks to the core over HTTP + SSE.
 3. **Shared UI** — one Vite build in `app/dist`, loaded by every shell.
@@ -17,7 +17,7 @@ AI-TRADER is two processes and one shared UI bundle:
                 │ fetch / SSE                               │ Electron IPC
                 ▼                                           ▼
 ┌──────────────────────── core (trusted) ──────────────┐  ┌──────────────────┐
-│ FastAPI :8765                                        │  │ main.ts          │
+│ FastAPI :8765 (binds 0.0.0.0 by default)             │  │ main.ts          │
 │  ├─ agent loop ──▶ provider client ──▶ model API      │  │ spawn/wait/kill  │
 │  ├─ built-in tools ──▶ market, trading, db            │  │ core process     │
 │  ├─ MCP manager ──▶ stdio / Streamable HTTP servers   │  └──────────────────┘
@@ -29,7 +29,7 @@ AI-TRADER is two processes and one shared UI bundle:
         ┌───────────────────┼───────────────────┬──────────────────┐
         ▼                   ▼                   ▼                  ▼
    model APIs          market data          brokers           MCP servers
- Gemini/Groq/...    Yahoo Finance RSS   MT5/MetaAPI/CCXT   npx/uvx/HTTP
+  Gemini/Groq/...    Yahoo Finance RSS   MT5/MetaAPI/CCXT   npx/uvx/HTTP
 ```
 
 ---
@@ -40,18 +40,25 @@ AI-TRADER is two processes and one shared UI bundle:
 
 `app/electron/main.ts`:
 
-1. `app.whenReady()` probes `GET /api/health`.
+1. `app.whenReady()` probes `GET /api/health` on `127.0.0.1:8765`.
 2. If no AI-TRADER core answers, it spawns one. Candidate interpreters:
    `AI_TRADER_PYTHON`, then `py -3.12`, `py -3`, `python` (Windows), or
    `python3`, `python` (macOS/Linux).
+   - **Passes `AI_TRADER_HOST=0.0.0.0`** so core binds to all interfaces.
+   - Core auto-adds **Windows Firewall rule** for port 8765 (first run).
+   - Core detects **VC++ Redistributable** and **MT5 terminal** paths.
 3. It waits up to ~30 s, then opens the window. Core stdout/stderr go to
    `<userData>/logs/core.log`.
 4. On quit it kills the child process tree (`taskkill /T /F` on Windows).
 5. `core:restart` IPC lets Settings restart the core without restarting Electron.
 
+**New IPC endpoints (v0.1.1+):**
+- `core:lan-info` → returns `{ lanIp, port, coreUrl, mobileUrl }` for Android app
+- `core:mt5-info` → returns MT5 terminal status from core's `/api/brokers/mt5/status`
+
 The window uses `contextIsolation: true`, `nodeIntegration: false`,
-`sandbox: true`, and a preload that exposes only `coreUrl`, `restartCore`,
-`info`, `platform`.
+`sandbox: true`, and a preload that exposes `coreUrl`, `restartCore`, `info`,
+`platform`, `lanInfo`, `mt5Info`.
 
 ### Browser
 
@@ -98,7 +105,7 @@ Modes:
 
 | Mode | System-prompt effect |
 |------|----------------------|
-| `analyse` | Read-only bias; explicit “do not propose orders unless asked” |
+| `analyse` | Read-only bias; explicit "do not propose orders unless asked" |
 | `trade` | May propose orders with SL/TP and reasoning |
 | `ask` | Plain assistant; no trading emphasis |
 
@@ -115,11 +122,11 @@ POST /api/orders  (or place_order tool)
         └─ allowed ──▶ order row status=pending_approval
                         + approval row kind=order
                               │
-                  POST /api/orders/{id}/approve
+                    POST /api/orders/{id}/approve
                               │
                         broker.place(order)
                               │
-                  filled / failed + position row + audit
+                    filled / failed + position row + audit
 ```
 
 `require_order_approval=false` short-circuits the approval card for
@@ -170,7 +177,7 @@ patch|remove|drop|kill|install` require approval unless auto-execute is on.
 
 | Module | Responsibility | Notes |
 |--------|----------------|-------|
-| `config.py` | Paths, host/port/token, CORS list, safe defaults | Imports create `HOME_DIR`/`DATA_DIR` |
+| `config.py` | Paths, host/port/token, CORS list, safe defaults | **Defaults to `0.0.0.0` bind** (v0.1.1+) |
 | `db.py` | SQLite schema, settings, CRUD helpers, audit | WAL mode, one lock, dict rows |
 | `security.py` | Encrypt/decrypt secrets, masking | Fernet when `cryptography` is present; XOR fallback marked `obfuscated` |
 | `providers.py` | Unified chat + model listing + test | OpenAI, Anthropic, Google native, Azure |
@@ -182,9 +189,9 @@ patch|remove|drop|kill|install` require approval unless auto-execute is on.
 | `trading.py` | Order lifecycle, approvals, positions, audit | Single source of truth for execution |
 | `agent.py` | Tool loop, system prompt, built-in tools | SSRF guard on `fetch_url` |
 | `autopilot.py` | Background loop: model voting, sizing, paper exits, decision/equity persistence, dashboard payload | Uses the same `risk.evaluate_order` gate |
-| `api.py` | HTTP surface + streaming | Pydantic request models |
+| `api.py` | HTTP surface + streaming | **New: `/api/brokers/mt5/status` endpoint** |
 | `seed.py` | First-run providers/MCP/accounts | Idempotent |
-| `main.py` | Uvicorn entry | `--lan`, `--reload`, `--port` |
+| `main.py` | Uvicorn entry — **auto firewall, VC++ check, MT5 detect** | `--lan`, `--reload`, `--port` |
 
 ### Storage
 
@@ -220,7 +227,7 @@ Files:
 
 | Boundary | Control |
 |----------|---------|
-| Renderer → core | Loopback bind by default; optional `X-AI-Trader-Token`; explicit CORS |
+| Renderer → core | Loopback bind optional; default `0.0.0.0`; optional `X-AI-Trader-Token`; explicit CORS |
 | Core → model APIs | Keys decrypted in memory per request, never returned |
 | Core → broker | Credentials decrypted per call; never sent to the UI |
 | Model → tools | Tool schema allow-list; SSRF guard; dangerous-tool approval |
@@ -239,11 +246,14 @@ vault key is readable — no local vault can prevent that.
 |---------|--------|
 | Model API down / bad key | SSE `error`; chat keeps history; provider status updated |
 | MCP server crashes | `status=error`, tool list cleared; agent continues without it |
-| Quote stale | Order blocked with “Fresh quote” |
+| Quote stale | Order blocked with "Fresh quote" |
 | Broker rejects | Order `failed`, broker message stored, no position created |
 | Core killed mid-chat | Client stream ends; conversation remains; resend is safe |
-| Duplicate order clicks | Second approval returns “already resolved” |
+| Duplicate order clicks | Second approval returns "already resolved" |
 | Disk full | Writes fail loudly; UI surfaces HTTP 500 |
+| Firewall rule add fails | Non-fatal; core starts anyway; user sees warning in logs |
+| VC++ missing | Warning at startup with download URL; core may still run |
+| MT5 terminal not found | Warning at startup; MT5 broker test will fail gracefully |
 
 ---
 

@@ -11,9 +11,16 @@ Three artifacts come from one codebase:
 | Android | Capacitor | `.apk` / `.aab` |
 | iOS | Capacitor | `.ipa` (macOS + Xcode only) |
 
-The Python core is **not** compiled into the Electron bundle in 0.1.0. The
+The Python core is **not** compiled into the Electron bundle. The
 packaged app ships the core source and launches a system Python. See
 [Bundling Python](#bundling-python) for the trade-offs and the upgrade path.
+
+**v0.1.1+ Zero-config features baked into builds:**
+- Core binds `0.0.0.0:8765` by default → LAN/mobile works instantly
+- Windows Firewall rule auto-added on first launch
+- VC++ Redistributable detection with download URL if missing
+- MT5 terminal auto-detection (common paths + registry)
+- LAN IP auto-discovery → Android app gets Core URL pre-filled
 
 ---
 
@@ -82,8 +89,8 @@ This runs:
 Artifacts:
 
 ```
-app/release/AI-TRADER-0.1.0-x64.exe          # NSIS installer
-app/release/AI-TRADER-0.1.0-x64-portable.exe # portable
+app/release/AI-TRADER-0.1.1-x64.exe          # NSIS installer
+app/release/AI-TRADER-0.1.1-x64-portable.exe # portable
 ```
 
 NSIS options are in `package.json → build.nsis`: install directory is selectable,
@@ -130,7 +137,7 @@ npm install
 npm run dist:mac
 ```
 
-Output: `app/release/AI-TRADER-0.1.0-arm64.dmg` (and x64 if you build on Intel or
+Output: `app/release/AI-TRADER-0.1.1-arm64.dmg` (and x64 if you build on Intel or
 pass `--x64`).
 
 Unsigned apps need a right-click → Open the first time. For distribution:
@@ -173,6 +180,9 @@ npm run dist:linux
 Outputs `AppImage` and `.deb` in `app/release/`. AppImage needs `libfuse2` on some
 distros.
 
+**v0.1.1+**: Core binds `0.0.0.0` by default. If running as a service (systemd),
+the Firewall rule is handled by the OS — no Electron auto-rule needed.
+
 ---
 
 ## 5. Android APK
@@ -205,11 +215,12 @@ Install:
 adb install -r mobile\android\app\build\outputs\apk\debug\app-debug.apk
 ```
 
-### Connect to the core
+### Connect to the core (v0.1.1+ auto-discovery)
 
-1. Start the core with `--lan` and a token.
-2. Enter `http://<pc-lan-ip>:8765` on the app's offline screen.
-3. Add the token in Settings.
+1. Start the core on PC (binds `0.0.0.0:8765` by default)
+2. Windows Firewall dialog appears once → click "Allow"
+3. Open Android app → **Core URL is pre-filled** with PC's LAN IP
+4. Tap Connect → full UI works
 
 ### Cleartext HTTP on Android
 
@@ -219,22 +230,22 @@ Android 9+ blocks plain HTTP. Options:
   `https://` core URL. Nothing to change in the app.
 - **LAN only:** add `android/app/src/main/res/xml/network_security_config.xml`:
 
-  ```xml
-  <?xml version="1.0" encoding="utf-8"?>
-  <network-security-config>
-    <domain-config cleartextTrafficPermitted="true">
-      <domain includeSubdomains="false">192.168.1.42</domain>
-    </domain-config>
-  </network-security-config>
-  ```
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="false">192.168.1.42</domain>
+  </domain-config>
+</network-security-config>
+```
 
-  Reference it from `AndroidManifest.xml`:
+Reference it from `AndroidManifest.xml`:
 
-  ```xml
-  <application
-      android:networkSecurityConfig="@xml/network_security_config"
-      ... >
-  ```
+```xml
+<application
+    android:networkSecurityConfig="@xml/network_security_config"
+    ... >
+```
 
 Never enable global cleartext for a released build.
 
@@ -292,7 +303,7 @@ tool work on the core host.
 Current behavior: Electron ships `core/**/*.py` as a resource and spawns
 `py -3.12` / `python3`. Target machines need Python + `requirements.txt`.
 
-Why it is done this way in 0.1.0:
+Why it is done this way in 0.1.1:
 
 - `MetaTrader5` is a Windows-only native package; bundling it blindly breaks
   macOS/Linux.
@@ -303,12 +314,12 @@ Upgrade path (recommended before public distribution):
 
 1. Build a **core sidecar** with PyInstaller on each OS:
 
-   ```powershell
-   pyinstaller --noconfirm --onedir --name aitrader-core `
-     --add-data "core\seed;seed" `
-     --add-data "skills;skills" `
-     core\main.py
-   ```
+```powershell
+pyinstaller --noconfirm --onedir --name aitrader-core `
+  --add-data "core\seed;seed" `
+  --add-data "skills;skills" `
+  core\main.py
+```
 
 2. Copy `dist/aitrader-core/` into `app/resources/core-runtime/`.
 3. In `electron/main.ts`, prefer `path.join(process.resourcesPath,
@@ -352,6 +363,10 @@ jobs:
 Desktop artifacts need a matrix of `windows-latest`, `macos-latest`,
 `ubuntu-latest`, with signing secrets injected as environment variables.
 
+**Current workflow (v0.1.1+):** `.github/workflows/build-all.yml` builds all 4
+platforms (Windows, macOS, Linux, Android) on tag push and creates a GitHub
+Release with all artifacts.
+
 ---
 
 ## 9. Release checklist
@@ -375,19 +390,22 @@ Desktop artifacts need a matrix of `windows-latest`, `macos-latest`,
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Window opens, “Core offline” | Python deps missing or wrong interpreter | Check `%APPDATA%\AI-TRADER\logs\core.log`; set `AI_TRADER_PYTHON` |
-| `Core not found at ...\resources\core\main.py` | `extraResources` didn’t copy | Rebuild; verify `app/release/win-unpacked/resources/core/main.py` |
+| Window opens, "Core offline" | Python deps missing or wrong interpreter | Check `%APPDATA%\AI-TRADER\logs\core.log`; set `AI_TRADER_PYTHON` |
+| `Core not found at ...\resources\core\main.py` | `extraResources` didn't copy | Rebuild; verify `app/release/win-unpacked/resources/core/main.py` |
 | Blank white window in production | `base` not relative or `loadFile` path wrong | Keep `base: "./"`; check `dist/index.html` exists |
 | `spawn py ENOENT` | Python not on PATH | Install Python or set `AI_TRADER_PYTHON` |
-| Android app can’t reach core | Firewall / wrong IP / `127.0.0.1` | Use LAN IP, allow port, bind `0.0.0.0`, token |
-| Gradle can’t find SDK | `ANDROID_HOME` unset | Set it or create `android/local.properties` |
-| macOS “app is damaged” | Quarantine / unsigned | `xattr -dr com.apple.quarantine AI-TRADER.app`, or notarise |
+| Android app can't reach core | Firewall / wrong IP / `127.0.0.1` | Use LAN IP, allow port, bind `0.0.0.0`, token |
+| Gradle can't find SDK | `ANDROID_HOME` unset | Set it or create `android/local.properties` |
+| macOS "app is damaged" | Quarantine / unsigned | `xattr -dr com.apple.quarantine AI-TRADER.app`, or notarise |
 | electron-builder fails on symlinks (Windows) | Developer Mode off | Enable Developer Mode or run as admin |
+| **Firewall dialog doesn't appear** | Rule already exists | Core adds rule silently; check `netsh advfirewall firewall show rule name="AI-TRADER Core"` |
+| **MT5 path not auto-filled** | Terminal in non-standard location | Set manually in Brokers tab; core logs checked paths |
+| **VC++ missing warning** | Redistributable not installed | Install from `https://aka.ms/vs/17/release/vc_redist.x64.exe` |
 
 ---
 
 ## Related docs
 
-- [../mobile/README.md](../mobile/README.md) — Android/iOS detail
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — what the Electron shell actually does
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) — runtime issues
+- [`../mobile/README.md`](../mobile/README.md) — Android/iOS detail
+- [`ARCHITECTURE.md`](../ARCHITECTURE.md) — what the Electron shell actually does
+- [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — runtime issues

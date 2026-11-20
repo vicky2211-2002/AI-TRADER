@@ -11,7 +11,9 @@ cannot place an order or bypass the risk gate.
 
 ---
 
-## The 16 seeded skills
+## The 27 skills (v0.1.1+)
+
+**16 built-in + 11 from [trader-skill](https://github.com/Jakeschincariol/trader-skill) (MIT licensed)**
 
 ### Analysis
 
@@ -48,6 +50,26 @@ cannot place an order or bypass the risk gate.
 | **model-provider-setup** | Add and verify any OpenAI/Anthropic/Google-compatible endpoint | Connecting a model |
 | **broker-connect** | Step-by-step MT5/Octa, MetaAPI, OANDA, Alpaca, CCXT onboarding with demo checks | Connecting a broker |
 | **mcp-builder** | Add, edit, test and remove MCP servers safely | Extending tools |
+
+---
+
+### trader-skill pack (11 skills, MIT licensed)
+
+*Cloned from [Jakeschincariol/trader-skill](https://github.com/Jakeschincariol/trader-skill)*
+
+| Skill | What it does | Use it when |
+|-------|--------------|-------------|
+| **trader-analyst** | Reads SEC EDGAR XBRL facts (10-Q/10-K/8-K) and sums up quarterly revenue, margins, EPS | "How did Apple's earnings look", "analyze the earnings", "check the 10-Q" |
+| **trader-broker** | Places APPROVED orders through your broker; only fires after trader-risk passes and you type yes | Executing a trade idea that passed risk checks |
+| **trader-budget** | Sizes every position to your budget before it reaches the broker | Deciding how much to buy/sell |
+| **trader-copycat** | Reads 13F filings of famous investors and reverse-engineers their holdings | "What is Buffett buying", "copy Scion's portfolio" |
+| **trader-news** | Watches breaking market news and SEC filings; classifies red/amber/green | Before entries, when price moves without technical reason |
+| **trader-pelosi** | Tracks congressional stock trades (Pelosi tracker) via Senate PTR PDFs | "What did Congress trade this week" |
+| **trader-rebalance** | Brings portfolio back to target weights without overtrading; respects correlation groups | Weekly, after big move, when adding symbol |
+| **trader-risk** | Checks every proposed order against your limits; blocks anything over them; prints PASS/BLOCK | Before every order, always |
+| **trader-screener** | Checks a list of companies against fundamental/technical rules; outputs a ranked table | "What should I buy", "screen my watchlist" |
+| **trader-tax** | Tracks cost-basis lots for every position (FIFO/LIFO), estimates tax on closes | Tax planning, realizing losses, wash-sale checks |
+| **trader-alerts** | Price alerts — rings when price target, stop or open interest is hit; writes JSON state | Setting targets, managing stops |
 
 ---
 
@@ -104,8 +126,8 @@ Rules:
 | **Delete** | Trash | Removes the row **and the folder from disk** (confirmation required) |
 | **Rescan folder** | Toolbar | Imports `SKILL.md` files added outside the app |
 
-Toggling enabled sends `content: ""`; the core treats empty content as “do not
-touch the file”. Editing always writes the file.
+Toggling enabled sends `content: ""`; the core treats empty content as "do not
+touch the file". Editing always writes the file.
 
 ### API
 
@@ -122,23 +144,23 @@ POST   /api/skills/rescan        -> { synced: n }
 
 ## Writing skills that actually change behavior
 
-1. **Write rules, not vibes.** “Risk ≤ 0.5% of equity” beats “be careful”.
+1. **Write rules, not vibes.** "Risk ≤ 0.5% of equity" beats "be careful".
 2. **Give a procedure.** Numbered steps the model can follow with tools.
 3. **Define the output shape.** A table, a JSON block, three bullets.
-4. **Include refusal conditions.** “If spread > 3 pips, say no and stop.”
-5. **Name the tools.** “Call `get_quote`, then `technical_analysis` on 4h.”
+4. **Include refusal conditions.** "If spread > 3 pips, say no and stop."
+5. **Name the tools.** "Call `get_quote`, then `technical_analysis` on 4h."
 6. **Keep one job per skill.** Split analysis from execution.
 7. **Version it.** Add a `## Changelog` section when you change rules.
-8. **Test it in chat.** Ask “use the risk-manager skill on this idea” and check
+8. **Test it in chat.** Ask "use the risk-manager skill on this idea" and check
    that the output matches the format.
 
 ### Anti-patterns
 
 | Bad | Why |
 |-----|-----|
-| “Always find a reason to trade” | Encourages overtrading |
-| “Use 5% risk on high conviction” | Breaks the hard cap, creates inconsistency |
-| “Double after a loss” | Martingale; the risk gate blocks it, but the instruction is poison |
+| "Always find a reason to trade" | Encourages overtrading |
+| "Use 5% risk on high conviction" | Breaks the hard cap, creates inconsistency |
+| "Double after a loss" | Martingale; the risk gate blocks it, but the instruction is poison |
 | 2,000-line strategy dump | Wastes context; the model skims |
 | Secrets or account numbers | Never put credentials in a skill |
 
