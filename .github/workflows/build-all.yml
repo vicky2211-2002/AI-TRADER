@@ -50,7 +50,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev fuse
 
       - name: Install Python dependencies
         run: |
@@ -109,7 +109,7 @@ jobs:
           ndk-version: r26b
           build-tools-version: 34.0.0
 
-      - name: Install Node dependencies
+      - name: Install Node dependencies (app)
         run: |
           cd app
           npm ci
@@ -119,20 +119,33 @@ jobs:
           cd app
           npm run build:web
 
-      - name: Setup Capacitor mobile
+      - name: Install Capacitor CLI
+        run: |
+          npm install -g @capacitor/cli
+
+      - name: Setup Capacitor mobile (install deps)
         run: |
           cd mobile
           npm ci
+
+      - name: Add Android platform
+        run: |
+          cd mobile
+          npx cap add android
 
       - name: Sync Capacitor Android
         run: |
           cd mobile
           npx cap sync android
 
+      - name: Fix Gradle wrapper permissions
+        run: |
+          chmod +x mobile/android/gradlew
+
       - name: Build Debug APK
         run: |
           cd mobile/android
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
