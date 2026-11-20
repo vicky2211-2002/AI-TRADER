@@ -126,27 +126,55 @@ jobs:
           NODE_VERSION="v20.18.1"
           if [ "${{ runner.os }}" = "Windows" ]; then
             ARCHIVE="node-${NODE_VERSION}-win-x64"
-            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}.zip" -o /tmp/node.zip
-            unzip -q /tmp/node.zip -d /tmp
-            cp "/tmp/${ARCHIVE}/node.exe" app/node/
-            cp "/tmp/${ARCHIVE}/npx.cmd" app/node/
-            cp -r "/tmp/${ARCHIVE}/node_modules/npm" app/node/node_modules/
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}.zip" -o /tmp/node.zip
+            rm -rf /tmp/node && mkdir -p /tmp/node
+            unzip -o -q /tmp/node.zip -d /tmp/node
+            cp "/tmp/node/${ARCHIVE}/node.exe" app/node/
+            cp "/tmp/node/${ARCHIVE}/npx.cmd" app/node/
+            cp -r "/tmp/node/${ARCHIVE}/node_modules/npm" app/node/node_modules/
           else
             if [ "${{ runner.os }}" = "Linux" ]; then
               ARCHIVE="node-${NODE_VERSION}-linux-x64"
             else
               ARCHIVE="node-${NODE_VERSION}-darwin-arm64"
             fi
-            curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}.tar.xz" -o /tmp/node.tar.xz
-            tar -xf /tmp/node.tar.xz -C /tmp
-            cp "/tmp/${ARCHIVE}/bin/node" app/node/
-            cp "/tmp/${ARCHIVE}/bin/npx" app/node/
-            cp -r "/tmp/${ARCHIVE}/lib/node_modules/npm" app/node/node_modules/
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "https://nodejs.org/dist/${NODE_VERSION}/${ARCHIVE}.tar.xz" -o /tmp/node.tar.xz
+            rm -rf /tmp/node && mkdir -p /tmp/node
+            tar -xf /tmp/node.tar.xz -C /tmp/node
+            cp "/tmp/node/${ARCHIVE}/bin/node" app/node/
+            cp "/tmp/node/${ARCHIVE}/bin/npx" app/node/
+            cp -r "/tmp/node/${ARCHIVE}/lib/node_modules/npm" app/node/node_modules/
             chmod +x app/node/node app/node/npx
           fi
           echo "Node.js bundled:"; ls -la app/node/
-          test -f app/node/node_modules/npm/bin/npx-cli.js || { echo "::error title=node::npm CLI missing"; exit 1; }
-          test -f app/node/node_modules/npm/lib/cli.js || { echo "::error title=node::npm lib missing"; exit 1; }
+          if [ ! -f app/node/node_modules/npm/bin/npx-cli.js ]; then
+            echo "::error title=node::npm CLI (npx-cli.js) missing"
+            exit 1
+          fi
+          if [ ! -f app/node/node_modules/npm/lib/cli.js ]; then
+            echo "::error title=node::npm lib/cli.js missing — npx would crash"
+            exit 1
+          fi
+
+      # One place that proves the MCP runtimes are actually usable, not just
+      # present. A bundle that cannot execute npx/uvx is worse than none.
+      - name: Verify bundled MCP runtimes
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$PWD/app/node:$PWD/app/uv:$PATH"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./app/node/node.exe --version
+            ./app/node/npx.cmd --version
+            ./app/uv/uv.exe --version
+            ./app/uv/uvx.exe --version
+          else
+            ./app/node/node --version
+            ./app/node/npx --version
+            ./app/uv/uv --version
+            ./app/uv/uvx --version
+          fi
+          echo "::notice title=mcp-runtimes::Bundled Node.js and uv both execute"
 
       # Bundle uv for MCP servers — no system uv needed.
       # Both uv AND uvx are needed: the MCP catalog invokes "uvx", which is a
@@ -157,8 +185,10 @@ jobs:
           set -euo pipefail
           mkdir -p app/uv
           if [ "${{ runner.os }}" = "Windows" ]; then
-            curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.4.30/uv-x86_64-pc-windows-msvc.zip" -o /tmp/uv.zip
-            unzip -q /tmp/uv.zip -d /tmp
+            UV_URL="https://github.com/astral-sh/uv/releases/download/0.4.30/uv-x86_64-pc-windows-msvc.zip"
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$UV_URL" -o /tmp/uv.zip
+            rm -rf /tmp/uv && mkdir -p /tmp/uv
+            unzip -o -q /tmp/uv.zip -d /tmp/uv
             cp /tmp/uv/uv.exe app/uv/
             cp /tmp/uv/uvx.exe app/uv/
           else
@@ -167,14 +197,19 @@ jobs:
             else
               UV_ARCHIVE="uv-aarch64-apple-darwin"
             fi
-            curl -fsSL "https://github.com/astral-sh/uv/releases/download/0.4.30/${UV_ARCHIVE}.tar.gz" -o /tmp/uv.tar.gz
+            UV_URL="https://github.com/astral-sh/uv/releases/download/0.4.30/${UV_ARCHIVE}.tar.gz"
+            curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors "$UV_URL" -o /tmp/uv.tar.gz
+            rm -rf /tmp/uv && mkdir -p /tmp/uv
             tar -xzf /tmp/uv.tar.gz -C /tmp/uv
             cp "/tmp/uv/${UV_ARCHIVE}/uv" app/uv/
             cp "/tmp/uv/${UV_ARCHIVE}/uvx" app/uv/
             chmod +x app/uv/uv app/uv/uvx
           fi
           echo "uv bundled:"; ls -la app/uv/
-          test -f app/uv/uvx.exe -o -f app/uv/uvx || { echo "::error title=uv::uvx missing"; exit 1; }
+          if [ ! -f app/uv/uvx.exe ] && [ ! -f app/uv/uvx ]; then
+            echo "::error title=uv::uvx missing after extraction"
+            exit 1
+          fi
 
       - name: Build UI + Electron main
         shell: bash
