@@ -7,8 +7,6 @@ import os from "node:os";
 
 const isDev = !!process.env.VITE_DEV_SERVER_URL;
 const CORE_PORT = Number(process.env.AI_TRADER_PORT || 8765);
-// Core binds to 0.0.0.0 by default, so we use localhost for health checks
-// but advertise LAN IP for mobile
 const CORE_URL = `http://127.0.0.1:${CORE_PORT}`;
 
 let mainWindow: BrowserWindow | null = null;
@@ -110,7 +108,6 @@ function startCore(): void {
     AI_TRADER_HOME: process.env.AI_TRADER_HOME || path.join(app.getPath("userData")),
     AI_TRADER_SKILLS: process.env.AI_TRADER_SKILLS || skillsDir(),
     AI_TRADER_PORT: String(CORE_PORT),
-    // Core now binds to 0.0.0.0 by default (see config.py)
     AI_TRADER_HOST: "0.0.0.0",
     PYTHONUNBUFFERED: "1",
     PYTHONIOENCODING: "utf-8",
@@ -197,7 +194,6 @@ async function createWindow(): Promise<void> {
   }
 }
 
-// IPC handlers
 ipcMain.handle("core:url", () => CORE_URL);
 
 ipcMain.handle("core:lan-info", () => ({
@@ -208,14 +204,13 @@ ipcMain.handle("core:lan-info", () => ({
 }));
 
 ipcMain.handle("core:mt5-info", async () => {
-  // Query core for MT5 status
   try {
     const res = await fetch(`${CORE_URL}/api/brokers/mt5/status`, { signal: AbortSignal.timeout(2000) });
     if (res.ok) return await res.json();
   } catch {
     // Fallback to local check
   }
-  return { mt5Found: false, message: "Core not ready" });
+  return { mt5Found: false, message: "Core not ready" };
 });
 
 ipcMain.handle("core:restart", async () => {
