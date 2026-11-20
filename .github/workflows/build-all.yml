@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y libarchive-tools rpm
+          sudo apt-get install -y libarchive-tools rpm fakeroot
 
       - name: Install app dependencies
         shell: bash
@@ -137,7 +137,7 @@ jobs:
           mkdir -p out
           shopt -s nullglob
           for f in app/release/*.exe app/release/*.dmg app/release/*.zip \
-                   app/release/*.AppImage app/release/*.deb; do
+                   app/release/*.AppImage app/release/*.deb app/release/*.tar.gz; do
             [ -f "$f" ] || continue
             case "$f" in
               *.blockmap) continue ;;
